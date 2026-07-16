@@ -6,7 +6,7 @@ export interface PathData {
   strokeWidth: number
 }
 
-type Tool = 'polyline' | 'freehand'
+type Tool = 'polyline' | 'freehand' | 'point' | 'none'
 
 interface CanvasState {
   tool: Tool
@@ -49,6 +49,11 @@ interface CanvasState {
   setProtractorRadius: (r: number) => void
   setProtractorRotation: (rot: number) => void
   setProtractorAngle: (angle: number) => void
+  canvasWidth: number
+  canvasHeight: number
+  setCanvasSize: (w: number, h: number) => void
+  gridSnapEnabled: boolean
+  toggleGridSnap: () => void
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
@@ -110,4 +115,9 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   setProtractorRadius: (protractorRadius) => set({ protractorRadius }),
   setProtractorRotation: (protractorRotation) => set({ protractorRotation }),
   setProtractorAngle: (protractorAngle) => set({ protractorAngle }),
+  canvasWidth: 800,
+  canvasHeight: 600,
+  setCanvasSize: (canvasWidth, canvasHeight) => set({ canvasWidth, canvasHeight }),
+  gridSnapEnabled: true,
+  toggleGridSnap: () => set((s) => ({ gridSnapEnabled: !s.gridSnapEnabled })),
 }))

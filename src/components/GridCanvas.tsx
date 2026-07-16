@@ -2,105 +2,40 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { Stage, Layer, Line, Rect, Circle, Text, Group, Arc } from 'react-konva'
 import type Konva from 'konva'
 import { useCanvasStore } from '../store/useCanvasStore'
+import InteractiveHandle from './InteractiveHandle'
+import { COLORS, SIZES, LIMITS } from '../constants/theme'
+import { degToRad, getMouseAngleRelativeTo, isPointInsideCanvas, projectPointToSegment, getDistance, calculatePathLength, findAllIntersections } from '../utils/math'
 
-const WIDTH = 800
-const HEIGHT = 600
 const GRID = 10
 const RULER = 30
 const RULER_H = 40
-const RULER_MIN = 100
-const RULER_MAX = 800
 
-const STAGE_W = WIDTH + RULER
-const STAGE_H = HEIGHT + RULER
-
-const snapGrid = (v: number) => Math.round(v / GRID) * GRID
-
-function projectPointToSegment(
-  px: number, py: number,
-  ax: number, ay: number,
-  bx: number, by: number
-): { x: number; y: number; distance: number } {
-  const abx = bx - ax
-  const aby = by - ay
-  const apx = px - ax
-  const apy = py - ay
-
-  const abLenSq = abx * abx + aby * aby
-  if (abLenSq === 0) {
-    const dx = px - ax
-    const dy = py - ay
-    return { x: ax, y: ay, distance: Math.sqrt(dx * dx + dy * dy) }
-  }
-
-  let t = (apx * abx + apy * aby) / abLenSq
-  t = Math.max(0, Math.min(1, t))
-
-  const projX = ax + t * abx
-  const projY = ay + t * aby
-
-  const dx = px - projX
-  const dy = py - projY
-  const distance = Math.sqrt(dx * dx + dy * dy)
-
-  return { x: projX, y: projY, distance }
+const snapGrid = (v: number, enabled: boolean) => {
+  if (!enabled) return v
+  const rounded = Math.round(v / GRID) * GRID
+  return Math.abs(v - rounded) < 3.5 ? rounded : v
 }
 
-function isRulerInsideCanvas(rulerX: number, rulerY: number, length: number, rotation: number): boolean {
-  const theta = (rotation * Math.PI) / 180
+function isRulerInsideCanvas(rulerX: number, rulerY: number, length: number, rotation: number, canvasWidth: number, canvasHeight: number): boolean {
+  const theta = degToRad(rotation)
   const cos = Math.cos(theta)
   const sin = Math.sin(theta)
   const rx = rulerX + RULER
   const ry = rulerY
 
-  const corners = [
-    { x: rx, y: ry },
-    { x: rx + length * cos, y: ry + length * sin },
-    { x: rx - RULER_H * sin, y: ry + RULER_H * cos },
-    { x: rx + length * cos - RULER_H * sin, y: ry + length * sin + RULER_H * cos }
-  ]
+  // Center handle position
+  const cx = rx + (length / 2) * cos - (RULER_H / 2) * sin
+  const cy = ry + (length / 2) * sin + (RULER_H / 2) * cos
 
-  const EPS = 0.01
-  return corners.every(c => c.x >= RULER - EPS && c.x <= RULER + WIDTH + EPS && c.y >= -EPS && c.y <= HEIGHT + EPS)
+  return isPointInsideCanvas(cx, cy, RULER, canvasWidth, canvasHeight)
 }
 
-function isCompassInsideCanvas(cx: number, cy: number, length: number, rotation: number): boolean {
-  const theta = (rotation * Math.PI) / 180
-  const cosRot = Math.cos(theta)
-  const sinRot = Math.sin(theta)
-
-  const center = { x: cx, y: cy }
-  const leftTip = { x: cx - length, y: cy }
-  const rightTip = { x: cx + length * cosRot, y: cy + length * sinRot }
-
-  const vertices = [center, leftTip, rightTip]
-  const EPS = 0.01
-  return vertices.every(v => v.x >= RULER - EPS && v.x <= RULER + WIDTH + EPS && v.y >= -EPS && v.y <= HEIGHT + EPS)
+function isCompassInsideCanvas(cx: number, cy: number, _length: number, _rotation: number, canvasWidth: number, canvasHeight: number): boolean {
+  return isPointInsideCanvas(cx, cy, RULER, canvasWidth, canvasHeight)
 }
 
-function isProtractorInsideCanvas(cx: number, cy: number, radius: number, rotation: number): boolean {
-  const theta = (rotation * Math.PI) / 180
-  const cosRot = Math.cos(theta)
-  const sinRot = Math.sin(theta)
-
-  // Local right tip: (radius, 0), Left tip: (-radius, 0), Top tip: (0, -radius)
-  const center = { x: cx, y: cy }
-  const rightTip = {
-    x: cx + radius * cosRot,
-    y: cy + radius * sinRot
-  }
-  const leftTip = {
-    x: cx - radius * cosRot,
-    y: cy - radius * sinRot
-  }
-  const topTip = {
-    x: cx + radius * Math.cos(theta - Math.PI / 2),
-    y: cy + radius * Math.sin(theta - Math.PI / 2)
-  }
-
-  const vertices = [center, rightTip, leftTip, topTip]
-  const EPS = 0.01
-  return vertices.every(v => v.x >= RULER - EPS && v.x <= RULER + WIDTH + EPS && v.y >= -EPS && v.y <= HEIGHT + EPS)
+function isProtractorInsideCanvas(cx: number, cy: number, _radius: number, _rotation: number, canvasWidth: number, canvasHeight: number): boolean {
+  return isPointInsideCanvas(cx, cy, RULER, canvasWidth, canvasHeight)
 }
 
 export default function GridCanvas() {
@@ -125,6 +60,12 @@ export default function GridCanvas() {
   const protractorRotation = useCanvasStore((s) => s.protractorRotation)
   const protractorAngle = useCanvasStore((s) => s.protractorAngle)
   const setProtractorRotation = useCanvasStore((s) => s.setProtractorRotation)
+  const canvasWidth = useCanvasStore((s) => s.canvasWidth)
+  const canvasHeight = useCanvasStore((s) => s.canvasHeight)
+  const gridSnapEnabled = useCanvasStore((s) => s.gridSnapEnabled)
+
+  const STAGE_W = canvasWidth + RULER
+  const STAGE_H = canvasHeight + RULER
 
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
   const [resizeLen, setResizeLen] = useState<number | null>(null)
@@ -145,84 +86,176 @@ export default function GridCanvas() {
 
   const effectiveLen = resizeLen ?? rulerLength
 
-  const getSnappedPosition = useCallback((mx: number, my: number) => {
+  const intersections = useMemo(() => {
+    return findAllIntersections(paths, currentPoints)
+  }, [paths, currentPoints])
+
+  const isCloseToAnyHandle = useCallback((mx: number, my: number) => {
+    const checkDist = (hx: number, hy: number) => getDistance(mx, my, hx, hy) < 15
+
     if (rulerVisible) {
-      const theta = (rulerRotation * Math.PI) / 180
+      const theta = degToRad(rulerRotation)
+      const cos = Math.cos(theta)
+      const sin = Math.sin(theta)
+      const rx = rulerPos.x + RULER
+      const ry = rulerPos.y
+      
+      if (checkDist(rx + (effectiveLen / 2) * cos - (RULER_H / 2) * sin, ry + (effectiveLen / 2) * sin + (RULER_H / 2) * cos)) return true
+      if (checkDist(rx + (effectiveLen / 2) * cos - (-15) * sin, ry + (effectiveLen / 2) * sin + (-15) * cos)) return true
+      if (checkDist(rx + effectiveLen * cos - (RULER_H / 2) * sin, ry + effectiveLen * sin + (RULER_H / 2) * cos)) return true
+    }
+
+    if (compassVisible) {
+      const theta = degToRad(compassRotation)
+      const cos = Math.cos(theta)
+      const sin = Math.sin(theta)
+      if (checkDist(compassPos.x, compassPos.y)) return true
+      if (checkDist(compassPos.x - compassLegLength, compassPos.y)) return true
+      if (checkDist(compassPos.x + compassLegLength * cos, compassPos.y + compassLegLength * sin)) return true
+    }
+
+    if (protractorVisible) {
+      const theta = degToRad(protractorRotation)
+      const cos = Math.cos(theta)
+      const sin = Math.sin(theta)
+      if (checkDist(protractorPos.x, protractorPos.y)) return true
+      if (checkDist(protractorPos.x - protractorRadius * cos, protractorPos.y - protractorRadius * sin)) return true
+      if (checkDist(protractorPos.x + protractorRadius * cos, protractorPos.y + protractorRadius * sin)) return true
+
+      const rad = degToRad(180 + protractorAngle)
+      const hx = protractorRadius * Math.cos(rad)
+      const hy = protractorRadius * Math.sin(rad)
+      const px = protractorPos.x + hx * cos - hy * sin
+      const py = protractorPos.y + hx * sin + hy * cos
+      if (checkDist(px, py)) return true
+    }
+
+    return false
+  }, [rulerVisible, rulerPos, rulerRotation, effectiveLen, compassVisible, compassPos, compassRotation, compassLegLength, protractorVisible, protractorPos, protractorRotation, protractorRadius, protractorAngle])
+
+  const getSnappedPosition = useCallback((mx: number, my: number) => {
+    // 1. Prioritize line intersections (Euclidea magnet)
+    if (gridSnapEnabled) {
+      let bestIntersection = null
+      let bestIntersectionDist = 8 // Snap radius of 8px
+      for (const pt of intersections) {
+        const ptGlobalX = pt.x + RULER
+        const ptGlobalY = pt.y
+        const dist = getDistance(mx, my, ptGlobalX, ptGlobalY)
+        if (dist < bestIntersectionDist) {
+          bestIntersectionDist = dist
+          bestIntersection = { x: ptGlobalX, y: ptGlobalY }
+        }
+      }
+      if (bestIntersection) {
+        return bestIntersection
+      }
+    }
+
+    // 2. Snap to Ruler top or bottom drawing edge if near or inside its body
+    if (rulerVisible) {
+      const theta = degToRad(rulerRotation)
       const cos = Math.cos(theta)
       const sin = Math.sin(theta)
       const rx = rulerPos.x + RULER
       const ry = rulerPos.y
 
+      // Top edge
       const tl = { x: rx, y: ry }
       const tr = { x: rx + effectiveLen * cos, y: ry + effectiveLen * sin }
+      
+      // Bottom edge
       const bl = { x: rx - RULER_H * sin, y: ry + RULER_H * cos }
       const br = { x: rx + effectiveLen * cos - RULER_H * sin, y: ry + effectiveLen * sin + RULER_H * cos }
 
-      const edges = [
-        projectPointToSegment(mx, my, tl.x, tl.y, tr.x, tr.y),
-        projectPointToSegment(mx, my, bl.x, bl.y, br.x, br.y),
-        projectPointToSegment(mx, my, tl.x, tl.y, bl.x, bl.y),
-        projectPointToSegment(mx, my, tr.x, tr.y, br.x, br.y),
-      ]
+      const dx = mx - tl.x
+      const dy = my - tl.y
+      
+      // Local Y coordinate (distance from top edge along the perpendicular direction, downwards)
+      const localY = dx * (-sin) + dy * cos
+      // Local X coordinate (distance along the top edge)
+      const localX = dx * cos + dy * sin
+      
+      const isInsideOrNearBody = localX >= -20 && localX <= effectiveLen + 20 && localY >= -20 && localY <= RULER_H + 20
 
-      let bestEdge = edges[0]
-      for (let i = 1; i < edges.length; i++) {
-        if (edges[i].distance < bestEdge.distance) {
-          bestEdge = edges[i]
+      if (isInsideOrNearBody) {
+        if (localY <= RULER_H / 2) {
+          // Snap to top edge
+          const proj = projectPointToSegment(mx, my, tl.x, tl.y, tr.x, tr.y)
+          return { x: proj.x, y: proj.y }
+        } else {
+          // Snap to bottom edge
+          const proj = projectPointToSegment(mx, my, bl.x, bl.y, br.x, br.y)
+          return { x: proj.x, y: proj.y }
         }
-      }
-
-      if (bestEdge.distance < 25) {
-        return { x: bestEdge.x, y: bestEdge.y }
       }
     }
 
-    return { x: snapGrid(mx), y: snapGrid(my) }
-  }, [rulerVisible, rulerRotation, rulerPos, effectiveLen])
+    // 3. Snap to Protractor baseline if close or inside the bottom half
+    if (protractorVisible) {
+      const theta = degToRad(protractorRotation)
+      const cos = Math.cos(theta)
+      const sin = Math.sin(theta)
+
+      const blX = protractorPos.x - protractorRadius * cos
+      const blY = protractorPos.y - protractorRadius * sin
+      const brX = protractorPos.x + protractorRadius * cos
+      const brY = protractorPos.y + protractorRadius * sin
+
+      const proj = projectPointToSegment(mx, my, blX, blY, brX, brY)
+      // Allow snapping if cursor is within 40px of the baseline (easy to grab)
+      if (proj.distance < 40) {
+        return { x: proj.x, y: proj.y }
+      }
+    }
+
+    // 4. Default magnetic grid snap
+    return { x: snapGrid(mx, gridSnapEnabled), y: snapGrid(my, gridSnapEnabled) }
+  }, [rulerVisible, rulerRotation, rulerPos, effectiveLen, gridSnapEnabled, intersections, protractorVisible, protractorPos, protractorRadius, protractorRotation])
 
   const gridLines = useMemo(() => {
     const minor: number[][] = []
     const major: number[][] = []
     const ext = 200
-    for (let x = -ext; x <= WIDTH + ext; x += GRID) {
+    for (let x = -ext; x <= canvasWidth + ext; x += GRID) {
       const arr = x % (GRID * 10) === 0 ? major : minor
-      arr.push([x + RULER, -ext, x + RULER, HEIGHT + ext])
+      arr.push([x + RULER, -ext, x + RULER, canvasHeight + ext])
     }
-    for (let y = -ext; y <= HEIGHT + ext; y += GRID) {
+    for (let y = -ext; y <= canvasHeight + ext; y += GRID) {
       const arr = y % (GRID * 10) === 0 ? major : minor
-      arr.push([-ext + RULER, y, WIDTH + ext + RULER, y])
+      arr.push([-ext + RULER, y, canvasWidth + ext + RULER, y])
     }
     return { minor, major }
-  }, [])
+  }, [canvasWidth, canvasHeight])
 
   const axisRulers = useMemo(() => {
     const els: React.ReactNode[] = []
     const tc = '#555'
 
-    for (let gx = 0; gx <= WIDTH; gx += GRID) {
+    for (let gx = 0; gx <= canvasWidth; gx += GRID) {
       const sx = gx + RULER
       const cm = gx % (GRID * 10) === 0
       const len = cm ? 10 : 5
-      els.push(<Line key={`br-${gx}`} points={[sx, HEIGHT, sx, HEIGHT + len]} stroke={tc} strokeWidth={cm ? 1 : 0.5} listening={false} />)
+      els.push(<Line key={`br-${gx}`} points={[sx, canvasHeight, sx, canvasHeight + len]} stroke={tc} strokeWidth={cm ? 1 : 0.5} listening={false} />)
       if (cm) {
         const l = `${gx / 100}`
-        els.push(<Text key={`bl-${gx}`} x={sx - l.length * 3} y={HEIGHT + 12} text={l} fontSize={9} fill={tc} fontFamily="monospace" listening={false} />)
+        els.push(<Text key={`bl-${gx}`} x={sx - l.length * 3} y={canvasHeight + 12} text={l} fontSize={9} fill={tc} fontFamily="monospace" listening={false} />)
       }
     }
 
-    for (let gy = 0; gy <= HEIGHT; gy += GRID) {
+    for (let gy = 0; gy <= canvasHeight; gy += GRID) {
       const sy = gy
       const cm = gy % (GRID * 10) === 0
       const len = cm ? 10 : 5
       els.push(<Line key={`lr-${gy}`} points={[RULER, sy, RULER - len, sy]} stroke={tc} strokeWidth={cm ? 1 : 0.5} listening={false} />)
       if (cm) {
-        const l = `${(HEIGHT - gy) / 100}`
+        const l = `${(canvasHeight - gy) / 100}`
         els.push(<Text key={`ll-${gy}`} x={RULER - 16} y={sy - 4} text={l} fontSize={9} fill={tc} fontFamily="monospace" listening={false} />)
       }
     }
 
     return els
-  }, [])
+  }, [canvasWidth, canvasHeight])
 
   const rulerContent = useMemo(() => {
     const ticks: React.ReactNode[] = []
@@ -238,53 +271,66 @@ export default function GridCanvas() {
     return { ticks, labels }
   }, [effectiveLen])
 
-  const cancelBubble = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    e.cancelBubble = true
-  }, [])
-
   const finalizePoly = useCallback(() => {
     const st = useCanvasStore.getState()
     if (st.currentPoints.length >= 2) {
-      st.addPath({ points: [...st.currentPoints], color: '#1a1a1a', strokeWidth: 1.5 })
+      st.addPath({ points: [...st.currentPoints], color: COLORS.black, strokeWidth: SIZES.strokeMedium })
     }
     st.clearCurrent()
   }, [])
 
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (e.evt.button !== 0) return
-    // Ignore if clicking on ruler elements
-    if (e.target !== e.target.getStage()) return
     const st = useCanvasStore.getState()
     if (st.tool !== 'freehand') return
 
     const pos = e.target.getStage()?.getPointerPosition()
-    if (!pos) return
+    if (!pos || isCloseToAnyHandle(pos.x, pos.y)) return
 
     freehand.current = true
     const snapped = getSnappedPosition(pos.x, pos.y)
-    st.addPointToCurrent([snapped.x - RULER, snapped.y])
-  }, [getSnappedPosition])
+    const sx = snapped.x - RULER
+    const sy = snapped.y
+    st.addPointToCurrent([sx, sy])
+  }, [getSnappedPosition, isCloseToAnyHandle])
 
   const handleClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (e.evt.button !== 0) return
-    // Ignore if clicking on ruler elements
-    if (e.target !== e.target.getStage()) return
     const st = useCanvasStore.getState()
-    if (st.tool !== 'polyline') return
-
-    const now = Date.now()
-    if (now - lastClick.current < 300) {
-      lastClick.current = 0
-      finalizePoly()
-      return
-    }
-    lastClick.current = now
-
+    
     const pos = e.target.getStage()?.getPointerPosition()
-    if (!pos) return
-    const snapped = getSnappedPosition(pos.x, pos.y)
-    st.addPointToCurrent([snapped.x - RULER, snapped.y])
-  }, [finalizePoly, getSnappedPosition])
+    if (!pos || isCloseToAnyHandle(pos.x, pos.y)) return
+
+    if (st.tool === 'polyline') {
+      const now = Date.now()
+      if (now - lastClick.current < 300) {
+        lastClick.current = 0
+        finalizePoly()
+        return
+      }
+      lastClick.current = now
+
+      const snapped = getSnappedPosition(pos.x, pos.y)
+      st.addPointToCurrent([snapped.x - RULER, snapped.y])
+    } else if (st.tool === 'point') {
+      const snapped = getSnappedPosition(pos.x, pos.y)
+      const mx = snapped.x - RULER
+      const my = snapped.y
+      const size = SIZES.crossMarkSize
+
+      st.addPath({
+        points: [
+          mx - size, my,
+          mx + size, my,
+          mx, my,
+          mx, my - size,
+          mx, my + size
+        ],
+        color: COLORS.black,
+        strokeWidth: SIZES.strokeMedium
+      })
+    }
+  }, [finalizePoly, getSnappedPosition, isCloseToAnyHandle])
 
   const handleDblClick = useCallback(() => {
     const st = useCanvasStore.getState()
@@ -300,10 +346,9 @@ export default function GridCanvas() {
   }, [])
 
   const handleMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-
     if (freehand.current) {
       const pos = e.target.getStage()?.getPointerPosition()
-      if (!pos) return
+      if (!pos || isCloseToAnyHandle(pos.x, pos.y)) return
       const snapped = getSnappedPosition(pos.x, pos.y)
       const sx = snapped.x - RULER
       const sy = snapped.y
@@ -315,15 +360,15 @@ export default function GridCanvas() {
     }
 
     const st = useCanvasStore.getState()
-    if (st.tool === 'polyline') {
+    if (st.tool === 'polyline' || st.tool === 'point' || st.tool === 'freehand') {
       const pos = e.target.getStage()?.getPointerPosition()
-      if (!pos) { setPreviewPos(null); return }
+      if (!pos || isCloseToAnyHandle(pos.x, pos.y)) { setPreviewPos(null); return }
       const snapped = getSnappedPosition(pos.x, pos.y)
       setPreviewPos({ x: snapped.x - RULER, y: snapped.y })
     } else {
       setPreviewPos(null)
     }
-  }, [getSnappedPosition])
+  }, [getSnappedPosition, isCloseToAnyHandle])
 
 
   useEffect(() => {
@@ -341,7 +386,7 @@ export default function GridCanvas() {
         freehand.current = false
         const st = useCanvasStore.getState()
         if (st.currentPoints.length >= 2) {
-          st.addPath({ points: [...st.currentPoints], color: '#1a1a1a', strokeWidth: 1.5 })
+          st.addPath({ points: [...st.currentPoints], color: COLORS.black, strokeWidth: SIZES.strokeMedium })
         }
         st.clearCurrent()
       }
@@ -367,7 +412,7 @@ export default function GridCanvas() {
       if (compassDrawingMode) {
         const st = useCanvasStore.getState()
         if (st.currentPoints.length >= 2) {
-          st.addPath({ points: [...st.currentPoints], color: '#1a1a1a', strokeWidth: 1.5 })
+          st.addPath({ points: [...st.currentPoints], color: COLORS.black, strokeWidth: SIZES.strokeMedium })
         }
         st.clearCurrent()
       }
@@ -385,17 +430,17 @@ export default function GridCanvas() {
         const deltaX = e.clientX - resizeStart.clientX
         const deltaY = e.clientY - resizeStart.clientY
         const projectedDelta = deltaX * Math.cos(theta) + deltaY * Math.sin(theta)
-        const newLen = snapGrid(resizeStart.length + projectedDelta)
-        const clampedLen = Math.max(RULER_MIN, Math.min(RULER_MAX, newLen))
+        const newLen = snapGrid(resizeStart.length + projectedDelta, gridSnapEnabled)
+        const clampedLen = Math.max(LIMITS.rulerMinLength, Math.min(LIMITS.rulerMaxLength, newLen))
 
         let newRulerX = resizeStart.rulerX
         const rightEdge = newRulerX + RULER + clampedLen
-        if (rightEdge > RULER + WIDTH) {
-          newRulerX = RULER + WIDTH - clampedLen - RULER
+        if (rightEdge > RULER + canvasWidth) {
+          newRulerX = RULER + canvasWidth - clampedLen - RULER
         }
         newRulerX = Math.max(0, newRulerX)
 
-        if (isRulerInsideCanvas(newRulerX, rulerPos.y, clampedLen, rulerRotation)) {
+        if (isRulerInsideCanvas(newRulerX, rulerPos.y, clampedLen, rulerRotation, canvasWidth, canvasHeight)) {
           setResizeLen(clampedLen)
           useCanvasStore.getState().setRulerPos({ x: newRulerX, y: rulerPos.y })
         }
@@ -403,10 +448,10 @@ export default function GridCanvas() {
         const deltaX = e.clientX - dragStart.clientX
         const deltaY = e.clientY - dragStart.clientY
 
-        const newRulerX = snapGrid(dragStart.rulerX + deltaX)
-        const newRulerY = snapGrid(dragStart.rulerY + deltaY)
+        const newRulerX = snapGrid(dragStart.rulerX + deltaX, gridSnapEnabled)
+        const newRulerY = snapGrid(dragStart.rulerY + deltaY, gridSnapEnabled)
 
-        if (isRulerInsideCanvas(newRulerX, newRulerY, effectiveLen, rulerRotation)) {
+        if (isRulerInsideCanvas(newRulerX, newRulerY, effectiveLen, rulerRotation, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setRulerPos({ x: newRulerX, y: newRulerY })
         }
       } else if (rotationStart) {
@@ -417,24 +462,24 @@ export default function GridCanvas() {
         let newRotation = (rotationStart.startRotation + deltaAngleDeg) % 360
         if (newRotation < 0) newRotation += 360
 
-        newRotation = Math.round(newRotation)
-        if (isRulerInsideCanvas(rulerPos.x, rulerPos.y, effectiveLen, newRotation)) {
+        newRotation = Math.round(newRotation * 10) / 10
+        if (isRulerInsideCanvas(rulerPos.x, rulerPos.y, effectiveLen, newRotation, canvasWidth, canvasHeight)) {
           setRulerRotation(newRotation)
         }
       } else if (compassRadiusStart) {
         const deltaX = compassRadiusStart.clientX - e.clientX
-        const newRadius = Math.max(20, compassRadiusStart.startRadius + deltaX)
-        if (isCompassInsideCanvas(compassPos.x, compassPos.y, newRadius, compassRotation)) {
+        const newRadius = Math.max(LIMITS.compassMinRadius, compassRadiusStart.startRadius + deltaX)
+        if (isCompassInsideCanvas(compassPos.x, compassPos.y, newRadius, compassRotation, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setCompassLegLength(newRadius)
         }
       } else if (compassDragStart) {
         const deltaX = e.clientX - compassDragStart.clientX
         const deltaY = e.clientY - compassDragStart.clientY
 
-        const newCompassX = snapGrid(compassDragStart.compassX + deltaX)
-        const newCompassY = snapGrid(compassDragStart.compassY + deltaY)
+        const newCompassX = snapGrid(compassDragStart.compassX + deltaX, gridSnapEnabled)
+        const newCompassY = snapGrid(compassDragStart.compassY + deltaY, gridSnapEnabled)
 
-        if (isCompassInsideCanvas(newCompassX, newCompassY, compassLegLength, compassRotation)) {
+        if (isCompassInsideCanvas(newCompassX, newCompassY, compassLegLength, compassRotation, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setCompassPos({ x: newCompassX, y: newCompassY })
         }
       } else if (compassRotationStart) {
@@ -446,7 +491,7 @@ export default function GridCanvas() {
         if (newRotation < 0) newRotation += 360
 
         newRotation = Math.round(newRotation)
-        if (isCompassInsideCanvas(compassPos.x, compassPos.y, compassLegLength, newRotation)) {
+        if (isCompassInsideCanvas(compassPos.x, compassPos.y, compassLegLength, newRotation, canvasWidth, canvasHeight)) {
           const st = useCanvasStore.getState()
           if (compassDrawingMode) {
             const prevRot = st.compassRotation
@@ -472,10 +517,10 @@ export default function GridCanvas() {
         const deltaX = e.clientX - protractorDragStart.clientX
         const deltaY = e.clientY - protractorDragStart.clientY
 
-        const newX = snapGrid(protractorDragStart.px + deltaX)
-        const newY = snapGrid(protractorDragStart.py + deltaY)
+        const newX = snapGrid(protractorDragStart.px + deltaX, gridSnapEnabled)
+        const newY = snapGrid(protractorDragStart.py + deltaY, gridSnapEnabled)
 
-        if (isProtractorInsideCanvas(newX, newY, protractorRadius, protractorRotation)) {
+        if (isProtractorInsideCanvas(newX, newY, protractorRadius, protractorRotation, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setProtractorPos({ x: newX, y: newY })
         }
       } else if (protractorRotationStart) {
@@ -487,30 +532,43 @@ export default function GridCanvas() {
         if (newRotation < 0) newRotation += 360
 
         newRotation = Math.round(newRotation)
-        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, protractorRadius, newRotation)) {
+        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, protractorRadius, newRotation, canvasWidth, canvasHeight)) {
           setProtractorRotation(newRotation)
         }
       } else if (protractorRadiusStart) {
         const deltaX = protractorRadiusStart.clientX - e.clientX
-        const newRadius = Math.max(50, protractorRadiusStart.startRadius + deltaX)
-        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, newRadius, protractorRotation)) {
+        const newRadius = Math.max(LIMITS.protractorMinRadius, protractorRadiusStart.startRadius + deltaX)
+        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, newRadius, protractorRotation, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setProtractorRadius(newRadius)
         }
       } else if (protractorAngleStart) {
         let mouseAngleRad = Math.atan2(e.clientY - protractorAngleStart.clientCenterY, e.clientX - protractorAngleStart.clientCenterX)
         let mouseAngleDeg = mouseAngleRad * (180 / Math.PI)
 
-        let localAngle = (protractorRotation - mouseAngleDeg) % 360
-        if (localAngle < 0) localAngle += 360
+        // Normalize mouse angle to local coordinate system of the protractor
+        let mouseAngleLocal = (mouseAngleDeg - protractorRotation) % 360
+        if (mouseAngleLocal < 0) mouseAngleLocal += 360
 
-        localAngle = Math.max(0, Math.min(180, localAngle))
+        let localAngle: number
+        if (mouseAngleLocal >= 180 && mouseAngleLocal <= 360) {
+          // Upper half: Map 180 -> 0 (left) and 360 -> 180 (right)
+          localAngle = mouseAngleLocal - 180
+        } else {
+          // Lower half: Clamp to nearest edge to prevent jumps
+          if (mouseAngleLocal < 90) {
+            localAngle = 180 // Clamp to right edge
+          } else {
+            localAngle = 0   // Clamp to left edge
+          }
+        }
+
         useCanvasStore.getState().setProtractorAngle(Math.round(localAngle))
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, compassRadiusStart, compassDragStart, compassRotationStart, protractorDragStart, protractorRotationStart, protractorRadiusStart, protractorAngleStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, protractorPos.x, protractorPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassDrawingMode, protractorRadius, protractorRotation, setProtractorRotation])
+  }, [resizeStart, dragStart, rotationStart, compassRadiusStart, compassDragStart, compassRotationStart, protractorDragStart, protractorRotationStart, protractorRadiusStart, protractorAngleStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, protractorPos.x, protractorPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassDrawingMode, protractorRadius, protractorRotation, setProtractorRotation, canvasWidth, canvasHeight])
 
   const previewLine =
     tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
@@ -534,12 +592,12 @@ export default function GridCanvas() {
       onMouseLeave={() => setPreviewPos(null)}
     >
       <Layer>
-        <Rect x={0} y={0} width={RULER} height={HEIGHT} fill="#f0f0f0" listening={false} />
-        <Rect x={RULER} y={HEIGHT} width={WIDTH} height={RULER} fill="#f0f0f0" listening={false} />
+        <Rect x={0} y={0} width={RULER} height={canvasHeight} fill="#f0f0f0" listening={false} />
+        <Rect x={RULER} y={canvasHeight} width={canvasWidth} height={RULER} fill="#f0f0f0" listening={false} />
       </Layer>
 
-      <Layer clip={{ x: RULER, y: 0, width: WIDTH, height: HEIGHT }}>
-        <Rect x={RULER} y={0} width={WIDTH} height={HEIGHT} fill="white" listening={false} />
+      <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
+        <Rect x={RULER} y={0} width={canvasWidth} height={canvasHeight} fill="white" listening={false} />
         {gridLines.minor.map((p, i) => (
           <Line key={`mi-${i}`} points={p} stroke="#e8e8e8" strokeWidth={0.5} listening={false} />
         ))}
@@ -550,7 +608,7 @@ export default function GridCanvas() {
 
       <Layer>{axisRulers}</Layer>
 
-      <Layer clip={{ x: RULER, y: 0, width: WIDTH, height: HEIGHT }}>
+      <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
         {paths.map((path, i) => (
           <Line
             key={`p-${i}`}
@@ -575,33 +633,100 @@ export default function GridCanvas() {
         {previewLine && (
           <Line points={previewLine} stroke="#2563eb" strokeWidth={1.5} dash={[6, 4]} listening={false} />
         )}
-        {tool === 'polyline' && previewPos && !resizeStart && !dragStart && !rotationStart && (
+        {(tool === 'polyline' || tool === 'freehand') && previewPos && !resizeStart && !dragStart && !rotationStart && (
           <Circle x={previewPos.x + RULER} y={previewPos.y} radius={3} fill="#2563eb" opacity={0.6} listening={false} />
         )}
+        {tool === 'point' && previewPos && !resizeStart && !dragStart && !rotationStart && (
+          <Group x={previewPos.x + RULER} y={previewPos.y} opacity={0.6} listening={false}>
+            <Line points={[-SIZES.crossMarkSize, 0, SIZES.crossMarkSize, 0]} stroke="#2563eb" strokeWidth={1.5} />
+            <Line points={[0, -SIZES.crossMarkSize, 0, SIZES.crossMarkSize]} stroke="#2563eb" strokeWidth={1.5} />
+          </Group>
+        )}
+
+        {/* Magnetic intersection points visual indicator (Euclidea style) */}
+        {gridSnapEnabled && intersections.map((pt, i) => (
+          <Circle
+            key={`int-${i}`}
+            x={pt.x + RULER}
+            y={pt.y}
+            radius={2}
+            fill="#3b82f6"
+            stroke="#1d4ed8"
+            strokeWidth={0.5}
+            opacity={0.7}
+            listening={false}
+          />
+        ))}
+
+        {/* Tooltip measurements during drawing */}
+        {(() => {
+          if (freehand.current && currentPoints.length >= 2) {
+            const x = currentPoints[currentPoints.length - 2] + RULER
+            const y = currentPoints[currentPoints.length - 1]
+            const len = calculatePathLength(currentPoints) / 100
+            return (
+              <Group x={x + 12} y={y - 12} listening={false}>
+                <Rect width={60} height={18} fill="rgba(0,0,0,0.6)" cornerRadius={3} />
+                <Text text={`${len.toFixed(1)} cm`} fill="white" fontSize={10} fontFamily="monospace" x={6} y={4} />
+              </Group>
+            )
+          }
+          if (tool === 'polyline' && currentPoints.length >= 2 && previewPos) {
+            const x = previewPos.x + RULER
+            const y = previewPos.y
+            const accumLen = calculatePathLength(currentPoints) / 100
+            const segmentLen = getDistance(
+              currentPoints[currentPoints.length - 2],
+              currentPoints[currentPoints.length - 1],
+              previewPos.x,
+              previewPos.y
+            ) / 100
+            const totalLen = accumLen + segmentLen
+            const txt = `Seg: ${segmentLen.toFixed(1)} cm\nTotal: ${totalLen.toFixed(1)} cm`
+            return (
+              <Group x={x + 12} y={y - 28} listening={false}>
+                <Rect width={100} height={30} fill="rgba(0,0,0,0.6)" cornerRadius={3} />
+                <Text text={txt} fill="white" fontSize={9} fontFamily="monospace" x={6} y={4} />
+              </Group>
+            )
+          }
+          return null
+        })()}
       </Layer>
 
       {rulerVisible && (
-        <Layer clip={{ x: RULER, y: 0, width: WIDTH, height: HEIGHT }}>
+        <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             ref={rulerGroupRef}
             x={rulerPos.x + RULER}
             y={rulerPos.y}
             rotation={rulerRotation}
-            onClick={cancelBubble}
-            onDblClick={cancelBubble}
           >
-            <Rect width={effectiveLen} height={RULER_H} fill="#ffd700" opacity={0.25} stroke="#b8960f" strokeWidth={1} cornerRadius={2} />
+            <Rect width={effectiveLen} height={RULER_H} fill="#ffd700" opacity={0.25} stroke={COLORS.handleStrokeIdle} strokeWidth={1} cornerRadius={2} />
             {rulerContent.ticks}
             {rulerContent.labels}
 
+            {/* Total ruler length display */}
+            <Text
+              x={effectiveLen / 2 - 40}
+              y={RULER_H - 14}
+              width={80}
+              text={`${(effectiveLen / 100).toFixed(1)} cm`}
+              fontSize={10}
+              fontStyle="bold"
+              fontFamily="monospace"
+              fill="#8a720c"
+              align="center"
+              listening={false}
+            />
+
             {/* Central move handle */}
-            <Group
+            <InteractiveHandle
               x={effectiveLen / 2}
               y={RULER_H / 2}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+              cursorType="move"
+              radius={SIZES.handleRadiusSmall}
               onMouseDown={(e) => {
-                e.cancelBubble = true
                 setDragStart({
                   clientX: e.evt.clientX,
                   clientY: e.evt.clientY,
@@ -609,17 +734,7 @@ export default function GridCanvas() {
                   rulerY: rulerPos.y,
                 })
               }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'move'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
+            />
 
             {/* Connecting line for rotation handle */}
             <Line
@@ -630,37 +745,21 @@ export default function GridCanvas() {
             />
 
             {/* Rotation handle */}
-            <Group
+            <InteractiveHandle
               x={effectiveLen / 2}
               y={-15}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+              cursorType="pointer"
+              radius={SIZES.handleRadiusSmall}
               onMouseDown={(e) => {
-                e.cancelBubble = true
-                const rect = e.target.getStage()?.container().getBoundingClientRect()
-                if (rect) {
-                  const clientCenterX = rect.left + rulerPos.x + RULER
-                  const clientCenterY = rect.top + rulerPos.y
-                  const currentMouseAngle = Math.atan2(e.evt.clientY - clientCenterY, e.evt.clientX - clientCenterX)
-                  setRotationStart({
-                    startMouseAngle: currentMouseAngle,
-                    startRotation: rulerRotation,
-                    clientCenterX,
-                    clientCenterY,
-                  })
-                }
-              }}
-              onMouseEnter={(e) => {
                 const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'pointer'
+                setRotationStart({
+                  startMouseAngle: getMouseAngleRelativeTo(e, { x: rulerPos.x + RULER, y: rulerPos.y }, stage),
+                  startRotation: rulerRotation,
+                  clientCenterX: stage?.container().getBoundingClientRect().left! + rulerPos.x + RULER,
+                  clientCenterY: stage?.container().getBoundingClientRect().top! + rulerPos.y,
+                })
               }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
+            />
 
             {/* Rotation label */}
             <Text
@@ -675,13 +774,12 @@ export default function GridCanvas() {
             />
 
             {/* Right resize handle */}
-            <Group
+            <InteractiveHandle
               x={effectiveLen}
               y={RULER_H / 2}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+              cursorType="ew-resize"
+              radius={SIZES.handleRadiusSmall}
               onMouseDown={(e) => {
-                e.cancelBubble = true
                 setResizeStart({
                   clientX: e.evt.clientX,
                   clientY: e.evt.clientY,
@@ -690,27 +788,15 @@ export default function GridCanvas() {
                 })
                 setResizeLen(rulerLength)
               }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'ew-resize'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
+            />
           </Group>
         </Layer>
       )}
       {compassVisible && (
-        <Layer clip={{ x: RULER, y: 0, width: WIDTH, height: HEIGHT }}>
+        <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             x={compassPos.x}
             y={compassPos.y}
-            onClick={cancelBubble}
-            onDblClick={cancelBubble}
           >
             {/* Left leg (fixed radius indicator) */}
             <Line
@@ -718,6 +804,18 @@ export default function GridCanvas() {
               stroke="#555"
               strokeWidth={3}
               lineCap="round"
+            />
+            {/* Radius measurement on left leg */}
+            <Text
+              x={-compassLegLength + 10}
+              y={-14}
+              width={compassLegLength - 20}
+              text={`${(compassLegLength / 100).toFixed(1)} cm`}
+              fontSize={10}
+              fontFamily="monospace"
+              fill="#555"
+              align="center"
+              listening={false}
             />
 
             {/* Right leg (rotatable drawing line) */}
@@ -734,40 +832,33 @@ export default function GridCanvas() {
             />
 
             {/* Left Handle (Radius resizing) */}
-            <Group
+            <InteractiveHandle
               x={-compassLegLength}
               y={0}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+              cursorType="ew-resize"
+              radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
-                e.cancelBubble = true
                 setCompassRadiusStart({
                   clientX: e.evt.clientX,
                   startRadius: compassLegLength,
                   compassX: compassPos.x,
                 })
               }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'ew-resize'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
+            />
 
             {/* Center Handle (Move & Toggle Drawing Mode) */}
-            <Group
-              onClick={cancelBubble}
-              onDblClick={(e) => {
-                e.cancelBubble = true
+            <InteractiveHandle
+              x={0}
+              y={0}
+              cursorType="move"
+              radius={SIZES.handleRadiusCenter}
+              isActive={compassDrawingMode}
+              fill={compassDrawingMode ? COLORS.primaryBlue : COLORS.mediumGray}
+              stroke={COLORS.darkGray}
+              onDblClick={() => {
                 useCanvasStore.getState().setCompassDrawingMode(!compassDrawingMode)
               }}
               onMouseDown={(e) => {
-                e.cancelBubble = true
                 setCompassDragStart({
                   clientX: e.evt.clientX,
                   clientY: e.evt.clientY,
@@ -775,70 +866,44 @@ export default function GridCanvas() {
                   compassY: compassPos.y,
                 })
               }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'move'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={7} fill={compassDrawingMode ? '#3b82f6' : '#555'} stroke="#333" strokeWidth={1} />
-            </Group>
+            />
 
             {/* Right Handle (Rotation & Drawing) */}
-            <Group
+            <InteractiveHandle
               x={compassLegLength * Math.cos((compassRotation * Math.PI) / 180)}
               y={compassLegLength * Math.sin((compassRotation * Math.PI) / 180)}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+              cursorType="pointer"
+              radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
-                e.cancelBubble = true
-                const rect = e.target.getStage()?.container().getBoundingClientRect()
-                if (rect) {
-                  const clientCenterX = rect.left + compassPos.x
-                  const clientCenterY = rect.top + compassPos.y
-                  const currentMouseAngle = Math.atan2(e.evt.clientY - clientCenterY, e.evt.clientX - clientCenterX)
-                  
-                  // Initialize a new current path for drawing if drawing mode is active
-                  if (compassDrawingMode) {
-                    useCanvasStore.getState().addPointToCurrent([
-                      compassPos.x + compassLegLength * Math.cos((compassRotation * Math.PI) / 180) - RULER,
-                      compassPos.y + compassLegLength * Math.sin((compassRotation * Math.PI) / 180)
-                    ])
-                  }
-
-                  setCompassRotationStart({
-                    startMouseAngle: currentMouseAngle,
-                    startRotation: compassRotation,
-                    clientCenterX,
-                    clientCenterY,
-                  })
+                const stage = e.target.getStage()
+                const clientCenterX = stage?.container().getBoundingClientRect().left! + compassPos.x
+                const clientCenterY = stage?.container().getBoundingClientRect().top! + compassPos.y
+                const currentMouseAngle = getMouseAngleRelativeTo(e, compassPos, stage)
+                
+                if (compassDrawingMode) {
+                  useCanvasStore.getState().addPointToCurrent([
+                    compassPos.x + compassLegLength * Math.cos(degToRad(compassRotation)) - RULER,
+                    compassPos.y + compassLegLength * Math.sin(degToRad(compassRotation))
+                  ])
                 }
+
+                setCompassRotationStart({
+                  startMouseAngle: currentMouseAngle,
+                  startRotation: compassRotation,
+                  clientCenterX,
+                  clientCenterY,
+                })
               }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'pointer'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
+            />
           </Group>
         </Layer>
       )}
       {protractorVisible && (
-        <Layer clip={{ x: RULER, y: 0, width: WIDTH, height: HEIGHT }}>
+        <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             x={protractorPos.x}
             y={protractorPos.y}
             rotation={protractorRotation}
-            onClick={cancelBubble}
-            onDblClick={cancelBubble}
           >
             {/* Semicircle Glassmorphism fill */}
             <Arc
@@ -940,36 +1005,39 @@ export default function GridCanvas() {
             })()}
 
             {/* Left Handle (Radius resizing) */}
-            <Group
+            <Text
+              x={-protractorRadius - 65}
+              y={-5}
+              width={60}
+              text={`R: ${(protractorRadius / 100).toFixed(1)} cm`}
+              fontSize={9}
+              fontFamily="monospace"
+              fill="#555"
+              align="right"
+              listening={false}
+            />
+            <InteractiveHandle
               x={-protractorRadius}
               y={0}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+              cursorType="ew-resize"
+              radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
-                e.cancelBubble = true
                 setProtractorRadiusStart({
                   clientX: e.evt.clientX,
                   startRadius: protractorRadius,
                 })
               }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'ew-resize'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
+            />
 
             {/* Center Handle (Move) */}
-            <Group
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+            <InteractiveHandle
+              x={0}
+              y={0}
+              cursorType="move"
+              radius={SIZES.handleRadiusCenter}
+              fill={COLORS.mediumGray}
+              stroke={COLORS.darkGray}
               onMouseDown={(e) => {
-                e.cancelBubble = true
                 setProtractorDragStart({
                   clientX: e.evt.clientX,
                   clientY: e.evt.clientY,
@@ -977,70 +1045,45 @@ export default function GridCanvas() {
                   py: protractorPos.y,
                 })
               }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'move'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={7} fill="#555" stroke="#333" strokeWidth={1} />
-            </Group>
+            />
 
             {/* Right Handle (Rotation) */}
-            <Group
+            <InteractiveHandle
               x={protractorRadius}
               y={0}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
+              cursorType="pointer"
+              radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
-                e.cancelBubble = true
-                const rect = e.target.getStage()?.container().getBoundingClientRect()
-                if (rect) {
-                  const clientCenterX = rect.left + protractorPos.x
-                  const clientCenterY = rect.top + protractorPos.y
-                  const currentMouseAngle = Math.atan2(e.evt.clientY - clientCenterY, e.evt.clientX - clientCenterX)
-                  setProtractorRotationStart({
-                    startMouseAngle: currentMouseAngle,
-                    startRotation: protractorRotation,
-                    clientCenterX,
-                    clientCenterY,
-                  })
-                }
-              }}
-              onMouseEnter={(e) => {
                 const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'pointer'
+                setProtractorRotationStart({
+                  startMouseAngle: getMouseAngleRelativeTo(e, protractorPos, stage),
+                  startRotation: protractorRotation,
+                  clientCenterX: stage?.container().getBoundingClientRect().left! + protractorPos.x,
+                  clientCenterY: stage?.container().getBoundingClientRect().top! + protractorPos.y,
+                })
               }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
+            />
 
             {/* Angle Selector Handle (Slides on Arc & double click draws mark) */}
             {(() => {
-              const rad = ((180 + protractorAngle) * Math.PI) / 180
+              const rad = degToRad(180 + protractorAngle)
               const hx = protractorRadius * Math.cos(rad)
               const hy = protractorRadius * Math.sin(rad)
               return (
-                <Group
+                <InteractiveHandle
                   x={hx}
                   y={hy}
-                  onClick={cancelBubble}
-                  onDblClick={(e) => {
-                    e.cancelBubble = true
-                    const rotRad = (protractorRotation * Math.PI) / 180
+                  cursorType="pointer"
+                  radius={SIZES.handleRadiusStandard}
+                  isActive={true}
+                  onDblClick={() => {
+                    const rotRad = degToRad(protractorRotation)
                     const px = protractorPos.x + hx * Math.cos(rotRad) - hy * Math.sin(rotRad)
                     const py = protractorPos.y + hx * Math.sin(rotRad) + hy * Math.cos(rotRad)
                     
                     const mx = px - RULER
                     const my = py
-                    const size = 5
+                    const size = SIZES.crossMarkSize
                     
                     useCanvasStore.getState().addPath({
                       points: [
@@ -1050,32 +1093,19 @@ export default function GridCanvas() {
                         mx, my - size,
                         mx, my + size
                       ],
-                      color: '#1a1a1a',
-                      strokeWidth: 1.5
+                      color: COLORS.black,
+                      strokeWidth: SIZES.strokeMedium
                     })
                   }}
                   onMouseDown={(e) => {
-                    e.cancelBubble = true
-                    const rect = e.target.getStage()?.container().getBoundingClientRect()
-                    if (rect) {
-                      setProtractorAngleStart({
-                        startAngle: protractorAngle,
-                        clientCenterX: rect.left + protractorPos.x,
-                        clientCenterY: rect.top + protractorPos.y,
-                      })
-                    }
-                  }}
-                  onMouseEnter={(e) => {
                     const stage = e.target.getStage()
-                    if (stage) stage.container().style.cursor = 'pointer'
+                    setProtractorAngleStart({
+                      startAngle: protractorAngle,
+                      clientCenterX: stage?.container().getBoundingClientRect().left! + protractorPos.x,
+                      clientCenterY: stage?.container().getBoundingClientRect().top! + protractorPos.y,
+                    })
                   }}
-                  onMouseLeave={(e) => {
-                    const stage = e.target.getStage()
-                    if (stage) stage.container().style.cursor = 'default'
-                  }}
-                >
-                  <Circle radius={6} fill="#3b82f6" stroke="#1d4ed8" strokeWidth={1} />
-                </Group>
+                />
               )
             })()}
           </Group>
