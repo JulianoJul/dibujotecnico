@@ -7,7 +7,7 @@ const WIDTH = 800
 const HEIGHT = 600
 const GRID = 10
 const RULER = 30
-const RULER_H = 28
+const RULER_H = 40
 const RULER_MIN = 100
 const RULER_MAX = 800
 
