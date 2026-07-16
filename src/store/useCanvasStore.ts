@@ -29,7 +29,7 @@ interface CanvasState {
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
-  tool: 'polyline',
+  tool: 'freehand',
   setTool: (tool) => set({ tool, currentPoints: [] }),
   paths: [],
   addPath: (path) => set((s) => ({ paths: [...s.paths, path] })),

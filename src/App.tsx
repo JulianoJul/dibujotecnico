@@ -14,16 +14,6 @@ function App() {
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setTool('polyline')}
-          className={`px-3 py-1 rounded text-sm font-mono cursor-pointer transition-colors ${
-            tool === 'polyline'
-              ? 'bg-blue-600 text-white'
-              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          Polilínea
-        </button>
-        <button
           onClick={() => setTool('freehand')}
           className={`px-3 py-1 rounded text-sm font-mono cursor-pointer transition-colors ${
             tool === 'freehand'
@@ -32,6 +22,16 @@ function App() {
           }`}
         >
           Mano alzada
+        </button>
+        <button
+          onClick={() => setTool('polyline')}
+          className={`px-3 py-1 rounded text-sm font-mono cursor-pointer transition-colors ${
+            tool === 'polyline'
+              ? 'bg-blue-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          Polilínea
         </button>
 
         <span className="text-gray-300 text-sm">|</span>
