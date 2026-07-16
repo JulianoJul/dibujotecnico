@@ -46,6 +46,24 @@ function projectPointToSegment(
   return { x: projX, y: projY, distance }
 }
 
+function isRulerInsideCanvas(rulerX: number, rulerY: number, length: number, rotation: number): boolean {
+  const theta = (rotation * Math.PI) / 180
+  const cos = Math.cos(theta)
+  const sin = Math.sin(theta)
+  const rx = rulerX + RULER
+  const ry = rulerY
+
+  const corners = [
+    { x: rx, y: ry },
+    { x: rx + length * cos, y: ry + length * sin },
+    { x: rx - RULER_H * sin, y: ry + RULER_H * cos },
+    { x: rx + length * cos - RULER_H * sin, y: ry + length * sin + RULER_H * cos }
+  ]
+
+  const EPS = 0.01
+  return corners.every(c => c.x >= RULER - EPS && c.x <= RULER + WIDTH + EPS && c.y >= -EPS && c.y <= HEIGHT + EPS)
+}
+
 export default function GridCanvas() {
   const tool = useCanvasStore((s) => s.tool)
   const paths = useCanvasStore((s) => s.paths)
@@ -302,29 +320,21 @@ export default function GridCanvas() {
         }
         newRulerX = Math.max(0, newRulerX)
 
-        setResizeLen(clampedLen)
-        useCanvasStore.getState().setRulerPos({ x: newRulerX, y: rulerPos.y })
+        if (isRulerInsideCanvas(newRulerX, rulerPos.y, clampedLen, rulerRotation)) {
+          setResizeLen(clampedLen)
+          useCanvasStore.getState().setRulerPos({ x: newRulerX, y: rulerPos.y })
+        }
       } else if (dragStart) {
         const deltaX = e.clientX - dragStart.clientX
         const deltaY = e.clientY - dragStart.clientY
 
-        let newRulerX = snapGrid(dragStart.rulerX + deltaX)
-        let newRulerY = snapGrid(dragStart.rulerY + deltaY)
+        const newRulerX = snapGrid(dragStart.rulerX + deltaX)
+        const newRulerY = snapGrid(dragStart.rulerY + deltaY)
 
-        newRulerX = Math.max(0, Math.min(WIDTH - effectiveLen, newRulerX))
-        newRulerY = Math.max(0, Math.min(HEIGHT - RULER_H, newRulerY))
-
-        useCanvasStore.getState().setRulerPos({ x: newRulerX, y: newRulerY })
-      } else if (rotationStart) {
-        const stage = rulerGroupRef.current?.getStage()
-        const rect = stage?.container().getBoundingClientRect()
-        if (rect) {
-          const stageX = e.clientX - rect.left
-          const stageY = e.clientY - rect.top
-          const insideCanvas = stageX >= RULER && stageX <= RULER + WIDTH && stageY >= 0 && stageY <= HEIGHT
-          if (!insideCanvas) return
+        if (isRulerInsideCanvas(newRulerX, newRulerY, effectiveLen, rulerRotation)) {
+          useCanvasStore.getState().setRulerPos({ x: newRulerX, y: newRulerY })
         }
-
+      } else if (rotationStart) {
         const currentMouseAngle = Math.atan2(e.clientY - rotationStart.clientCenterY, e.clientX - rotationStart.clientCenterX)
         const deltaAngleRad = currentMouseAngle - rotationStart.startMouseAngle
         const deltaAngleDeg = deltaAngleRad * (180 / Math.PI)
@@ -333,13 +343,15 @@ export default function GridCanvas() {
         if (newRotation < 0) newRotation += 360
 
         newRotation = Math.round(newRotation)
-        setRulerRotation(newRotation)
+        if (isRulerInsideCanvas(rulerPos.x, rulerPos.y, effectiveLen, newRotation)) {
+          setRulerRotation(newRotation)
+        }
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, rulerPos.y, effectiveLen, rulerRotation, setRulerRotation])
+  }, [resizeStart, dragStart, rotationStart, rulerPos.x, rulerPos.y, effectiveLen, rulerRotation, setRulerRotation])
 
   const previewLine =
     tool === 'polyline' && currentPoints.length >= 2 && previewPos
