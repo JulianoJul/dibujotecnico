@@ -114,6 +114,7 @@ export default function GridCanvas() {
   const [dragStart, setDragStart] = useState<{ clientX: number; clientY: number; rulerX: number; rulerY: number } | null>(null)
   const [rotationStart, setRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
   const [openingStart, setOpeningStart] = useState<{ clientX: number; clientY: number; startOpening: number } | null>(null)
+  const [compassDragStart, setCompassDragStart] = useState<{ clientX: number; clientY: number; compassX: number; compassY: number } | null>(null)
   const lastClick = useRef(0)
   const freehand = useRef(false)
   const rulerGroupRef = useRef<Konva.Group>(null)
@@ -331,13 +332,14 @@ export default function GridCanvas() {
       setDragStart(null)
       setRotationStart(null)
       setOpeningStart(null)
+      setCompassDragStart(null)
     }
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
-  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setOpeningStart])
+  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setOpeningStart, setCompassDragStart])
 
   useEffect(() => {
-    if (!resizeStart && !dragStart && !rotationStart && !openingStart) return
+    if (!resizeStart && !dragStart && !rotationStart && !openingStart && !compassDragStart) return
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (resizeStart) {
@@ -398,12 +400,22 @@ export default function GridCanvas() {
         if (isCompassInsideCanvas(compassPos.x, compassPos.y, L, newOpening, compassRotation)) {
           useCanvasStore.getState().setCompassOpening(newOpening)
         }
+      } else if (compassDragStart) {
+        const deltaX = e.clientX - compassDragStart.clientX
+        const deltaY = e.clientY - compassDragStart.clientY
+
+        const newCompassX = snapGrid(compassDragStart.compassX + deltaX)
+        const newCompassY = snapGrid(compassDragStart.compassY + deltaY)
+
+        if (isCompassInsideCanvas(newCompassX, newCompassY, compassLegLength, compassOpening, compassRotation)) {
+          useCanvasStore.getState().setCompassPos({ x: newCompassX, y: newCompassY })
+        }
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, openingStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength])
+  }, [resizeStart, dragStart, rotationStart, openingStart, compassDragStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassOpening])
 
   const previewLine =
     tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
@@ -603,31 +615,33 @@ export default function GridCanvas() {
             x={compassPos.x}
             y={compassPos.y}
             rotation={compassRotation}
-            draggable
-            dragBoundFunc={function(this: Konva.Node, pos) {
-              const inside = isCompassInsideCanvas(pos.x, pos.y, compassLegLength, compassOpening, compassRotation)
-              if (inside) {
-                return pos
-              }
-              return {
-                x: this.x(),
-                y: this.y()
-              }
-            }}
-            onDragEnd={(e) => {
-              useCanvasStore.getState().setCompassPos({ x: e.target.x(), y: e.target.y() })
-            }}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage()
-              if (stage) stage.container().style.cursor = 'move'
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage()
-              if (stage) stage.container().style.cursor = 'default'
-            }}
+            onClick={cancelBubble}
+            onDblClick={cancelBubble}
           >
-            {/* Hinge joint */}
-            <Circle radius={6} fill="#555" stroke="#333" strokeWidth={1} />
+            {/* Hinge joint drag handle */}
+            <Group
+              onClick={cancelBubble}
+              onDblClick={cancelBubble}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                setCompassDragStart({
+                  clientX: e.evt.clientX,
+                  clientY: e.evt.clientY,
+                  compassX: compassPos.x,
+                  compassY: compassPos.y,
+                })
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'move'
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }}
+            >
+              <Circle radius={6} fill="#555" stroke="#333" strokeWidth={1} />
+            </Group>
 
             {/* Left leg */}
             <Line
