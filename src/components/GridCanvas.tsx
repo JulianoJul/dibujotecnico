@@ -354,7 +354,7 @@ export default function GridCanvas() {
   }, [resizeStart, dragStart, rotationStart, rulerPos.x, rulerPos.y, effectiveLen, rulerRotation, setRulerRotation])
 
   const previewLine =
-    tool === 'polyline' && currentPoints.length >= 2 && previewPos
+    tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
       ? [
           currentPoints[currentPoints.length - 2] + RULER,
           currentPoints[currentPoints.length - 1],
@@ -416,7 +416,7 @@ export default function GridCanvas() {
         {previewLine && (
           <Line points={previewLine} stroke="#2563eb" strokeWidth={1.5} dash={[6, 4]} listening={false} />
         )}
-        {tool === 'polyline' && previewPos && (
+        {tool === 'polyline' && previewPos && !resizeStart && !dragStart && !rotationStart && (
           <Circle x={previewPos.x + RULER} y={previewPos.y} radius={3} fill="#2563eb" opacity={0.6} listening={false} />
         )}
       </Layer>
