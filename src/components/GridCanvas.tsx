@@ -74,6 +74,11 @@ export default function GridCanvas() {
   const setRulerLength = useCanvasStore((s) => s.setRulerLength)
   const rulerRotation = useCanvasStore((s) => s.rulerRotation)
   const setRulerRotation = useCanvasStore((s) => s.setRulerRotation)
+  const compassVisible = useCanvasStore((s) => s.compassVisible)
+  const compassPos = useCanvasStore((s) => s.compassPos)
+  const compassOpening = useCanvasStore((s) => s.compassOpening)
+  const compassRotation = useCanvasStore((s) => s.compassRotation)
+  const compassLegLength = useCanvasStore((s) => s.compassLegLength)
 
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
   const [resizeLen, setResizeLen] = useState<number | null>(null)
@@ -542,6 +547,60 @@ export default function GridCanvas() {
             >
               <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
             </Group>
+          </Group>
+        </Layer>
+      )}
+      {compassVisible && (
+        <Layer clip={{ x: RULER, y: 0, width: WIDTH, height: HEIGHT }}>
+          <Group
+            x={compassPos.x}
+            y={compassPos.y}
+            rotation={compassRotation}
+            draggable
+            dragBoundFunc={(pos) => ({
+              x: Math.max(RULER, Math.min(RULER + WIDTH, pos.x)),
+              y: Math.max(0, Math.min(HEIGHT, pos.y)),
+            })}
+            onDragEnd={(e) => {
+              useCanvasStore.getState().setCompassPos({ x: e.target.x(), y: e.target.y() })
+            }}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage()
+              if (stage) stage.container().style.cursor = 'move'
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage()
+              if (stage) stage.container().style.cursor = 'default'
+            }}
+          >
+            {/* Hinge joint */}
+            <Circle radius={6} fill="#555" stroke="#333" strokeWidth={1} />
+
+            {/* Left leg */}
+            <Line
+              points={[
+                0,
+                0,
+                compassLegLength * Math.cos(((90 - compassOpening / 2) * Math.PI) / 180),
+                compassLegLength * Math.sin(((90 - compassOpening / 2) * Math.PI) / 180),
+              ]}
+              stroke="#555"
+              strokeWidth={3}
+              lineCap="round"
+            />
+
+            {/* Right leg */}
+            <Line
+              points={[
+                0,
+                0,
+                compassLegLength * Math.cos(((90 + compassOpening / 2) * Math.PI) / 180),
+                compassLegLength * Math.sin(((90 + compassOpening / 2) * Math.PI) / 180),
+              ]}
+              stroke="#555"
+              strokeWidth={3}
+              lineCap="round"
+            />
           </Group>
         </Layer>
       )}

@@ -7,6 +7,8 @@ function App() {
   const clearPaths = useCanvasStore((s) => s.clearPaths)
   const rulerVisible = useCanvasStore((s) => s.rulerVisible)
   const toggleRuler = useCanvasStore((s) => s.toggleRuler)
+  const compassVisible = useCanvasStore((s) => s.compassVisible)
+  const toggleCompass = useCanvasStore((s) => s.toggleCompass)
   const undo = useCanvasStore((s) => s.undo)
   const redo = useCanvasStore((s) => s.redo)
   const paths = useCanvasStore((s) => s.paths)
@@ -49,6 +51,16 @@ function App() {
           }`}
         >
           Regla
+        </button>
+        <button
+          onClick={toggleCompass}
+          className={`px-3 py-1 rounded text-sm font-mono cursor-pointer transition-colors ${
+            compassVisible
+              ? 'bg-blue-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          Compás
         </button>
 
         <span className="text-gray-300 text-sm">|</span>
