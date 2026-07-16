@@ -719,8 +719,8 @@ export default function GridCanvas() {
 
             {/* Rotation Handle (at the end of the right leg) */}
             <Group
-              x={compassLegLength * Math.cos(((90 + compassOpening / 2) * Math.PI) / 180)}
-              y={compassLegLength * Math.sin(((90 + compassOpening / 2) * Math.PI) / 180)}
+              x={compassLegLength * Math.cos(((90 - compassOpening / 2) * Math.PI) / 180)}
+              y={compassLegLength * Math.sin(((90 - compassOpening / 2) * Math.PI) / 180)}
               onClick={cancelBubble}
               onDblClick={cancelBubble}
               onMouseDown={(e) => {
