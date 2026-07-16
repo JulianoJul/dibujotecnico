@@ -64,6 +64,34 @@ function isRulerInsideCanvas(rulerX: number, rulerY: number, length: number, rot
   return corners.every(c => c.x >= RULER - EPS && c.x <= RULER + WIDTH + EPS && c.y >= -EPS && c.y <= HEIGHT + EPS)
 }
 
+function isCompassInsideCanvas(cx: number, cy: number, length: number, opening: number, rotation: number): boolean {
+  const theta = (rotation * Math.PI) / 180
+  const cosRot = Math.cos(theta)
+  const sinRot = Math.sin(theta)
+
+  const radL = ((90 - opening / 2) * Math.PI) / 180
+  const lx1 = length * Math.cos(radL)
+  const ly1 = length * Math.sin(radL)
+
+  const radR = ((90 + opening / 2) * Math.PI) / 180
+  const lx2 = length * Math.cos(radR)
+  const ly2 = length * Math.sin(radR)
+
+  const hinge = { x: cx, y: cy }
+  const leftTip = {
+    x: cx + lx1 * cosRot - ly1 * sinRot,
+    y: cy + lx1 * sinRot + ly1 * cosRot
+  }
+  const rightTip = {
+    x: cx + lx2 * cosRot - ly2 * sinRot,
+    y: cy + lx2 * sinRot + ly2 * cosRot
+  }
+
+  const vertices = [hinge, leftTip, rightTip]
+  const EPS = 0.01
+  return vertices.every(v => v.x >= RULER - EPS && v.x <= RULER + WIDTH + EPS && v.y >= -EPS && v.y <= HEIGHT + EPS)
+}
+
 export default function GridCanvas() {
   const tool = useCanvasStore((s) => s.tool)
   const paths = useCanvasStore((s) => s.paths)
@@ -557,10 +585,16 @@ export default function GridCanvas() {
             y={compassPos.y}
             rotation={compassRotation}
             draggable
-            dragBoundFunc={(pos) => ({
-              x: Math.max(RULER, Math.min(RULER + WIDTH, pos.x)),
-              y: Math.max(0, Math.min(HEIGHT, pos.y)),
-            })}
+            dragBoundFunc={function(this: Konva.Node, pos) {
+              const inside = isCompassInsideCanvas(pos.x, pos.y, compassLegLength, compassOpening, compassRotation)
+              if (inside) {
+                return pos
+              }
+              return {
+                x: this.x(),
+                y: this.y()
+              }
+            }}
             onDragEnd={(e) => {
               useCanvasStore.getState().setCompassPos({ x: e.target.x(), y: e.target.y() })
             }}
