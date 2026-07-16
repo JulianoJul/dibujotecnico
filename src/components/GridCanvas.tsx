@@ -113,6 +113,7 @@ export default function GridCanvas() {
   const [resizeStart, setResizeStart] = useState<{ clientX: number; clientY: number; length: number; rulerX: number } | null>(null)
   const [dragStart, setDragStart] = useState<{ clientX: number; clientY: number; rulerX: number; rulerY: number } | null>(null)
   const [rotationStart, setRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
+  const [openingStart, setOpeningStart] = useState<{ clientX: number; clientY: number; startOpening: number } | null>(null)
   const lastClick = useRef(0)
   const freehand = useRef(false)
   const rulerGroupRef = useRef<Konva.Group>(null)
@@ -329,13 +330,14 @@ export default function GridCanvas() {
       setResizeStart(null)
       setDragStart(null)
       setRotationStart(null)
+      setOpeningStart(null)
     }
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
-  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart])
+  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setOpeningStart])
 
   useEffect(() => {
-    if (!resizeStart && !dragStart && !rotationStart) return
+    if (!resizeStart && !dragStart && !rotationStart && !openingStart) return
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (resizeStart) {
@@ -379,12 +381,29 @@ export default function GridCanvas() {
         if (isRulerInsideCanvas(rulerPos.x, rulerPos.y, effectiveLen, newRotation)) {
           setRulerRotation(newRotation)
         }
+      } else if (openingStart) {
+        const theta = (compassRotation * Math.PI) / 180
+        const deltaX = e.clientX - openingStart.clientX
+        const deltaY = e.clientY - openingStart.clientY
+        const projectedDeltaY = deltaX * -Math.sin(theta) + deltaY * Math.cos(theta)
+
+        const L = compassLegLength
+        const startCy = L * Math.cos((openingStart.startOpening / 2) * Math.PI / 180) * 0.6
+        const newCy = startCy + projectedDeltaY
+
+        const ratio = Math.max(Math.cos(60 * Math.PI / 180), Math.min(Math.cos(5 * Math.PI / 180), newCy / (L * 0.6)))
+        const halfAngleRad = Math.acos(ratio)
+        const newOpening = Math.round(halfAngleRad * 2 * 180 / Math.PI)
+
+        if (isCompassInsideCanvas(compassPos.x, compassPos.y, L, newOpening, compassRotation)) {
+          useCanvasStore.getState().setCompassOpening(newOpening)
+        }
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, rulerPos.x, rulerPos.y, effectiveLen, rulerRotation, setRulerRotation])
+  }, [resizeStart, dragStart, rotationStart, openingStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength])
 
   const previewLine =
     tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
@@ -635,6 +654,40 @@ export default function GridCanvas() {
               strokeWidth={3}
               lineCap="round"
             />
+
+            {/* Slider track line */}
+            <Line
+              points={[0, 0, 0, compassLegLength * Math.cos((compassOpening / 2) * Math.PI / 180) * 0.6]}
+              stroke="#888"
+              strokeWidth={1}
+              dash={[2, 2]}
+            />
+
+            {/* Slider Handle */}
+            <Group
+              x={0}
+              y={compassLegLength * Math.cos((compassOpening / 2) * Math.PI / 180) * 0.6}
+              onClick={cancelBubble}
+              onDblClick={cancelBubble}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                setOpeningStart({
+                  clientX: e.evt.clientX,
+                  clientY: e.evt.clientY,
+                  startOpening: compassOpening,
+                })
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'ns-resize'
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }}
+            >
+              <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
+            </Group>
           </Group>
         </Layer>
       )}
