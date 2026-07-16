@@ -115,6 +115,7 @@ export default function GridCanvas() {
   const [rotationStart, setRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
   const [openingStart, setOpeningStart] = useState<{ clientX: number; clientY: number; startOpening: number } | null>(null)
   const [compassDragStart, setCompassDragStart] = useState<{ clientX: number; clientY: number; compassX: number; compassY: number } | null>(null)
+  const [compassRotationStart, setCompassRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
   const lastClick = useRef(0)
   const freehand = useRef(false)
   const rulerGroupRef = useRef<Konva.Group>(null)
@@ -333,13 +334,14 @@ export default function GridCanvas() {
       setRotationStart(null)
       setOpeningStart(null)
       setCompassDragStart(null)
+      setCompassRotationStart(null)
     }
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
-  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setOpeningStart, setCompassDragStart])
+  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setOpeningStart, setCompassDragStart, setCompassRotationStart])
 
   useEffect(() => {
-    if (!resizeStart && !dragStart && !rotationStart && !openingStart && !compassDragStart) return
+    if (!resizeStart && !dragStart && !rotationStart && !openingStart && !compassDragStart && !compassRotationStart) return
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (resizeStart) {
@@ -410,12 +412,24 @@ export default function GridCanvas() {
         if (isCompassInsideCanvas(newCompassX, newCompassY, compassLegLength, compassOpening, compassRotation)) {
           useCanvasStore.getState().setCompassPos({ x: newCompassX, y: newCompassY })
         }
+      } else if (compassRotationStart) {
+        const currentMouseAngle = Math.atan2(e.clientY - compassRotationStart.clientCenterY, e.clientX - compassRotationStart.clientCenterX)
+        const deltaAngleRad = currentMouseAngle - compassRotationStart.startMouseAngle
+        const deltaAngleDeg = deltaAngleRad * (180 / Math.PI)
+
+        let newRotation = (compassRotationStart.startRotation + deltaAngleDeg) % 360
+        if (newRotation < 0) newRotation += 360
+
+        newRotation = Math.round(newRotation)
+        if (isCompassInsideCanvas(compassPos.x, compassPos.y, compassLegLength, compassOpening, newRotation)) {
+          useCanvasStore.getState().setCompassRotation(newRotation)
+        }
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, openingStart, compassDragStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassOpening])
+  }, [resizeStart, dragStart, rotationStart, openingStart, compassDragStart, compassRotationStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassOpening])
 
   const previewLine =
     tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
@@ -694,6 +708,39 @@ export default function GridCanvas() {
               onMouseEnter={(e) => {
                 const stage = e.target.getStage()
                 if (stage) stage.container().style.cursor = 'ns-resize'
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }}
+            >
+              <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
+            </Group>
+
+            {/* Rotation Handle (at the end of the right leg) */}
+            <Group
+              x={compassLegLength * Math.cos(((90 + compassOpening / 2) * Math.PI) / 180)}
+              y={compassLegLength * Math.sin(((90 + compassOpening / 2) * Math.PI) / 180)}
+              onClick={cancelBubble}
+              onDblClick={cancelBubble}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                const rect = e.target.getStage()?.container().getBoundingClientRect()
+                if (rect) {
+                  const clientCenterX = rect.left + compassPos.x
+                  const clientCenterY = rect.top + compassPos.y
+                  const currentMouseAngle = Math.atan2(e.evt.clientY - clientCenterY, e.evt.clientX - clientCenterX)
+                  setCompassRotationStart({
+                    startMouseAngle: currentMouseAngle,
+                    startRotation: compassRotation,
+                    clientCenterX,
+                    clientCenterY,
+                  })
+                }
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'pointer'
               }}
               onMouseLeave={(e) => {
                 const stage = e.target.getStage()
