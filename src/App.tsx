@@ -7,6 +7,10 @@ function App() {
   const clearPaths = useCanvasStore((s) => s.clearPaths)
   const rulerVisible = useCanvasStore((s) => s.rulerVisible)
   const toggleRuler = useCanvasStore((s) => s.toggleRuler)
+  const undo = useCanvasStore((s) => s.undo)
+  const redo = useCanvasStore((s) => s.redo)
+  const paths = useCanvasStore((s) => s.paths)
+  const undonePaths = useCanvasStore((s) => s.undonePaths)
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center gap-4 p-4">
@@ -45,6 +49,31 @@ function App() {
           }`}
         >
           Regla
+        </button>
+
+        <span className="text-gray-300 text-sm">|</span>
+
+        <button
+          onClick={undo}
+          disabled={paths.length === 0}
+          className={`px-3 py-1 rounded text-sm font-mono border transition-colors ${
+            paths.length === 0
+              ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 cursor-pointer'
+          }`}
+        >
+          Deshacer
+        </button>
+        <button
+          onClick={redo}
+          disabled={undonePaths.length === 0}
+          className={`px-3 py-1 rounded text-sm font-mono border transition-colors ${
+            undonePaths.length === 0
+              ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 cursor-pointer'
+          }`}
+        >
+          Rehacer
         </button>
 
         <span className="text-gray-300 text-sm">|</span>
