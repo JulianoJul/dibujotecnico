@@ -9,6 +9,8 @@ function App() {
   const toggleRuler = useCanvasStore((s) => s.toggleRuler)
   const compassVisible = useCanvasStore((s) => s.compassVisible)
   const toggleCompass = useCanvasStore((s) => s.toggleCompass)
+  const protractorVisible = useCanvasStore((s) => s.protractorVisible)
+  const toggleProtractor = useCanvasStore((s) => s.toggleProtractor)
   const undo = useCanvasStore((s) => s.undo)
   const redo = useCanvasStore((s) => s.redo)
   const paths = useCanvasStore((s) => s.paths)
@@ -61,6 +63,16 @@ function App() {
           }`}
         >
           Compás
+        </button>
+        <button
+          onClick={toggleProtractor}
+          className={`px-3 py-1 rounded text-sm font-mono cursor-pointer transition-colors ${
+            protractorVisible
+              ? 'bg-blue-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          Transportador
         </button>
 
         <span className="text-gray-300 text-sm">|</span>

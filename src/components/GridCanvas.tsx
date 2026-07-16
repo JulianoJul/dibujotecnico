@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { Stage, Layer, Line, Rect, Circle, Text, Group } from 'react-konva'
+import { Stage, Layer, Line, Rect, Circle, Text, Group, Arc } from 'react-konva'
 import type Konva from 'konva'
 import { useCanvasStore } from '../store/useCanvasStore'
 
@@ -78,6 +78,31 @@ function isCompassInsideCanvas(cx: number, cy: number, length: number, rotation:
   return vertices.every(v => v.x >= RULER - EPS && v.x <= RULER + WIDTH + EPS && v.y >= -EPS && v.y <= HEIGHT + EPS)
 }
 
+function isProtractorInsideCanvas(cx: number, cy: number, radius: number, rotation: number): boolean {
+  const theta = (rotation * Math.PI) / 180
+  const cosRot = Math.cos(theta)
+  const sinRot = Math.sin(theta)
+
+  // Local right tip: (radius, 0), Left tip: (-radius, 0), Top tip: (0, -radius)
+  const center = { x: cx, y: cy }
+  const rightTip = {
+    x: cx + radius * cosRot,
+    y: cy + radius * sinRot
+  }
+  const leftTip = {
+    x: cx - radius * cosRot,
+    y: cy - radius * sinRot
+  }
+  const topTip = {
+    x: cx + radius * Math.cos(theta - Math.PI / 2),
+    y: cy + radius * Math.sin(theta - Math.PI / 2)
+  }
+
+  const vertices = [center, rightTip, leftTip, topTip]
+  const EPS = 0.01
+  return vertices.every(v => v.x >= RULER - EPS && v.x <= RULER + WIDTH + EPS && v.y >= -EPS && v.y <= HEIGHT + EPS)
+}
+
 export default function GridCanvas() {
   const tool = useCanvasStore((s) => s.tool)
   const paths = useCanvasStore((s) => s.paths)
@@ -94,6 +119,13 @@ export default function GridCanvas() {
   const compassRotation = useCanvasStore((s) => s.compassRotation)
   const compassLegLength = useCanvasStore((s) => s.compassLegLength)
 
+  const protractorVisible = useCanvasStore((s) => s.protractorVisible)
+  const protractorPos = useCanvasStore((s) => s.protractorPos)
+  const protractorRadius = useCanvasStore((s) => s.protractorRadius)
+  const protractorRotation = useCanvasStore((s) => s.protractorRotation)
+  const protractorAngle = useCanvasStore((s) => s.protractorAngle)
+  const setProtractorRotation = useCanvasStore((s) => s.setProtractorRotation)
+
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
   const [resizeLen, setResizeLen] = useState<number | null>(null)
   const [resizeStart, setResizeStart] = useState<{ clientX: number; clientY: number; length: number; rulerX: number } | null>(null)
@@ -102,6 +134,11 @@ export default function GridCanvas() {
   const [compassRadiusStart, setCompassRadiusStart] = useState<{ clientX: number; startRadius: number; compassX: number } | null>(null)
   const [compassDragStart, setCompassDragStart] = useState<{ clientX: number; clientY: number; compassX: number; compassY: number } | null>(null)
   const [compassRotationStart, setCompassRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
+  
+  const [protractorDragStart, setProtractorDragStart] = useState<{ clientX: number; clientY: number; px: number; py: number } | null>(null)
+  const [protractorRotationStart, setProtractorRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
+  const [protractorRadiusStart, setProtractorRadiusStart] = useState<{ clientX: number; startRadius: number } | null>(null)
+  const [protractorAngleStart, setProtractorAngleStart] = useState<{ startAngle: number; clientCenterX: number; clientCenterY: number } | null>(null)
   const lastClick = useRef(0)
   const freehand = useRef(false)
   const rulerGroupRef = useRef<Konva.Group>(null)
@@ -321,6 +358,10 @@ export default function GridCanvas() {
       setCompassRadiusStart(null)
       setCompassDragStart(null)
       setCompassRotationStart(null)
+      setProtractorDragStart(null)
+      setProtractorRotationStart(null)
+      setProtractorRadiusStart(null)
+      setProtractorAngleStart(null)
 
       // Finalize compass drawing if active
       if (compassDrawingMode) {
@@ -333,10 +374,10 @@ export default function GridCanvas() {
     }
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
-  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setCompassRadiusStart, setCompassDragStart, setCompassRotationStart, compassDrawingMode])
+  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setCompassRadiusStart, setCompassDragStart, setCompassRotationStart, compassDrawingMode, setProtractorDragStart, setProtractorRotationStart, setProtractorRadiusStart, setProtractorAngleStart])
 
   useEffect(() => {
-    if (!resizeStart && !dragStart && !rotationStart && !compassRadiusStart && !compassDragStart && !compassRotationStart) return
+    if (!resizeStart && !dragStart && !rotationStart && !compassRadiusStart && !compassDragStart && !compassRotationStart && !protractorDragStart && !protractorRotationStart && !protractorRadiusStart && !protractorAngleStart) return
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (resizeStart) {
@@ -427,12 +468,49 @@ export default function GridCanvas() {
           }
           st.setCompassRotation(newRotation)
         }
+      } else if (protractorDragStart) {
+        const deltaX = e.clientX - protractorDragStart.clientX
+        const deltaY = e.clientY - protractorDragStart.clientY
+
+        const newX = snapGrid(protractorDragStart.px + deltaX)
+        const newY = snapGrid(protractorDragStart.py + deltaY)
+
+        if (isProtractorInsideCanvas(newX, newY, protractorRadius, protractorRotation)) {
+          useCanvasStore.getState().setProtractorPos({ x: newX, y: newY })
+        }
+      } else if (protractorRotationStart) {
+        const currentMouseAngle = Math.atan2(e.clientY - protractorRotationStart.clientCenterY, e.clientX - protractorRotationStart.clientCenterX)
+        const deltaAngleRad = currentMouseAngle - protractorRotationStart.startMouseAngle
+        const deltaAngleDeg = deltaAngleRad * (180 / Math.PI)
+
+        let newRotation = (protractorRotationStart.startRotation + deltaAngleDeg) % 360
+        if (newRotation < 0) newRotation += 360
+
+        newRotation = Math.round(newRotation)
+        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, protractorRadius, newRotation)) {
+          setProtractorRotation(newRotation)
+        }
+      } else if (protractorRadiusStart) {
+        const deltaX = protractorRadiusStart.clientX - e.clientX
+        const newRadius = Math.max(50, protractorRadiusStart.startRadius + deltaX)
+        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, newRadius, protractorRotation)) {
+          useCanvasStore.getState().setProtractorRadius(newRadius)
+        }
+      } else if (protractorAngleStart) {
+        let mouseAngleRad = Math.atan2(e.clientY - protractorAngleStart.clientCenterY, e.clientX - protractorAngleStart.clientCenterX)
+        let mouseAngleDeg = mouseAngleRad * (180 / Math.PI)
+
+        let localAngle = (protractorRotation - mouseAngleDeg) % 360
+        if (localAngle < 0) localAngle += 360
+
+        localAngle = Math.max(0, Math.min(180, localAngle))
+        useCanvasStore.getState().setProtractorAngle(Math.round(localAngle))
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, compassRadiusStart, compassDragStart, compassRotationStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassDrawingMode])
+  }, [resizeStart, dragStart, rotationStart, compassRadiusStart, compassDragStart, compassRotationStart, protractorDragStart, protractorRotationStart, protractorRadiusStart, protractorAngleStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, protractorPos.x, protractorPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassDrawingMode, protractorRadius, protractorRotation, setProtractorRotation])
 
   const previewLine =
     tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
@@ -750,6 +828,256 @@ export default function GridCanvas() {
             >
               <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
             </Group>
+          </Group>
+        </Layer>
+      )}
+      {protractorVisible && (
+        <Layer clip={{ x: RULER, y: 0, width: WIDTH, height: HEIGHT }}>
+          <Group
+            x={protractorPos.x}
+            y={protractorPos.y}
+            rotation={protractorRotation}
+            onClick={cancelBubble}
+            onDblClick={cancelBubble}
+          >
+            {/* Semicircle Glassmorphism fill */}
+            <Arc
+              innerRadius={0}
+              outerRadius={protractorRadius}
+              angle={180}
+              rotation={180}
+              fill="rgba(255, 255, 255, 0.4)"
+              stroke="#555"
+              strokeWidth={1}
+            />
+            
+            {/* Baseline Bar */}
+            <Line
+              points={[-protractorRadius, 0, protractorRadius, 0]}
+              stroke="#333"
+              strokeWidth={2}
+            />
+
+            {/* Center crosshair */}
+            <Line points={[-8, 0, 8, 0]} stroke="#333" strokeWidth={0.8} />
+            <Line points={[0, -8, 0, 8]} stroke="#333" strokeWidth={0.8} />
+            <Circle radius={2} fill="#333" />
+
+            {/* Graduation Ticks & Labels */}
+            {(() => {
+              const elements: React.ReactNode[] = []
+              for (let i = 0; i <= 180; i += 5) {
+                const rad = ((180 + i) * Math.PI) / 180
+                const cos = Math.cos(rad)
+                const sin = Math.sin(rad)
+                const isMajor = i % 10 === 0
+                const isSuper = i % 30 === 0 || i === 45 || i === 135
+                const len = isSuper ? 12 : (isMajor ? 8 : 4)
+
+                // Draw tick line
+                elements.push(
+                  <Line
+                    key={`ptick-${i}`}
+                    points={[
+                      protractorRadius * cos,
+                      protractorRadius * sin,
+                      (protractorRadius - len) * cos,
+                      (protractorRadius - len) * sin,
+                    ]}
+                    stroke="#333"
+                    strokeWidth={isMajor ? 1 : 0.5}
+                  />
+                )
+
+                // Draw labels for super ticks
+                if (isSuper) {
+                  const labelRadius = protractorRadius - 22
+                  const lx = labelRadius * cos
+                  const ly = labelRadius * sin
+                  elements.push(
+                    <Text
+                      key={`plabel-${i}`}
+                      x={lx - 8}
+                      y={ly - 5}
+                      text={`${i}`}
+                      fontSize={8}
+                      fill="#111"
+                      fontFamily="monospace"
+                      align="center"
+                      verticalAlign="middle"
+                    />
+                  )
+                }
+              }
+              return elements
+            })()}
+
+            {/* Angle Indicator Line & Value */}
+            {(() => {
+              const rad = ((180 + protractorAngle) * Math.PI) / 180
+              const tx = protractorRadius * Math.cos(rad)
+              const ty = protractorRadius * Math.sin(rad)
+              return (
+                <Group>
+                  <Line
+                    points={[0, 0, tx, ty]}
+                    stroke="#3b82f6"
+                    strokeWidth={1.5}
+                    dash={[4, 2]}
+                  />
+                  <Text
+                    x={tx * 0.5 - 12}
+                    y={ty * 0.5 - 12}
+                    text={`${protractorAngle}°`}
+                    fontSize={11}
+                    fontStyle="bold"
+                    fill="#1e3a8a"
+                    fontFamily="monospace"
+                    backgroundColor="white"
+                  />
+                </Group>
+              )
+            })()}
+
+            {/* Left Handle (Radius resizing) */}
+            <Group
+              x={-protractorRadius}
+              y={0}
+              onClick={cancelBubble}
+              onDblClick={cancelBubble}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                setProtractorRadiusStart({
+                  clientX: e.evt.clientX,
+                  startRadius: protractorRadius,
+                })
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'ew-resize'
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }}
+            >
+              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
+            </Group>
+
+            {/* Center Handle (Move) */}
+            <Group
+              onClick={cancelBubble}
+              onDblClick={cancelBubble}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                setProtractorDragStart({
+                  clientX: e.evt.clientX,
+                  clientY: e.evt.clientY,
+                  px: protractorPos.x,
+                  py: protractorPos.y,
+                })
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'move'
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }}
+            >
+              <Circle radius={7} fill="#555" stroke="#333" strokeWidth={1} />
+            </Group>
+
+            {/* Right Handle (Rotation) */}
+            <Group
+              x={protractorRadius}
+              y={0}
+              onClick={cancelBubble}
+              onDblClick={cancelBubble}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                const rect = e.target.getStage()?.container().getBoundingClientRect()
+                if (rect) {
+                  const clientCenterX = rect.left + protractorPos.x
+                  const clientCenterY = rect.top + protractorPos.y
+                  const currentMouseAngle = Math.atan2(e.evt.clientY - clientCenterY, e.evt.clientX - clientCenterX)
+                  setProtractorRotationStart({
+                    startMouseAngle: currentMouseAngle,
+                    startRotation: protractorRotation,
+                    clientCenterX,
+                    clientCenterY,
+                  })
+                }
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'pointer'
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }}
+            >
+              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
+            </Group>
+
+            {/* Angle Selector Handle (Slides on Arc & double click draws mark) */}
+            {(() => {
+              const rad = ((180 + protractorAngle) * Math.PI) / 180
+              const hx = protractorRadius * Math.cos(rad)
+              const hy = protractorRadius * Math.sin(rad)
+              return (
+                <Group
+                  x={hx}
+                  y={hy}
+                  onClick={cancelBubble}
+                  onDblClick={(e) => {
+                    e.cancelBubble = true
+                    const rotRad = (protractorRotation * Math.PI) / 180
+                    const px = protractorPos.x + hx * Math.cos(rotRad) - hy * Math.sin(rotRad)
+                    const py = protractorPos.y + hx * Math.sin(rotRad) + hy * Math.cos(rotRad)
+                    
+                    const mx = px - RULER
+                    const my = py
+                    const size = 5
+                    
+                    useCanvasStore.getState().addPath({
+                      points: [
+                        mx - size, my,
+                        mx + size, my,
+                        mx, my,
+                        mx, my - size,
+                        mx, my + size
+                      ],
+                      color: '#1a1a1a',
+                      strokeWidth: 1.5
+                    })
+                  }}
+                  onMouseDown={(e) => {
+                    e.cancelBubble = true
+                    const rect = e.target.getStage()?.container().getBoundingClientRect()
+                    if (rect) {
+                      setProtractorAngleStart({
+                        startAngle: protractorAngle,
+                        clientCenterX: rect.left + protractorPos.x,
+                        clientCenterY: rect.top + protractorPos.y,
+                      })
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    const stage = e.target.getStage()
+                    if (stage) stage.container().style.cursor = 'pointer'
+                  }}
+                  onMouseLeave={(e) => {
+                    const stage = e.target.getStage()
+                    if (stage) stage.container().style.cursor = 'default'
+                  }}
+                >
+                  <Circle radius={6} fill="#3b82f6" stroke="#1d4ed8" strokeWidth={1} />
+                </Group>
+              )
+            })()}
           </Group>
         </Layer>
       )}

@@ -39,6 +39,16 @@ interface CanvasState {
   setCompassDrawingMode: (mode: boolean) => void
   setCompassRotation: (rot: number) => void
   setCompassLegLength: (length: number) => void
+  protractorVisible: boolean
+  protractorPos: { x: number; y: number }
+  protractorRadius: number
+  protractorRotation: number
+  protractorAngle: number
+  toggleProtractor: () => void
+  setProtractorPos: (pos: { x: number; y: number }) => void
+  setProtractorRadius: (r: number) => void
+  setProtractorRotation: (rot: number) => void
+  setProtractorAngle: (angle: number) => void
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
@@ -90,4 +100,14 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   setCompassDrawingMode: (compassDrawingMode) => set({ compassDrawingMode }),
   setCompassRotation: (compassRotation) => set({ compassRotation }),
   setCompassLegLength: (compassLegLength) => set({ compassLegLength }),
+  protractorVisible: false,
+  protractorPos: { x: 300, y: 300 },
+  protractorRadius: 150,
+  protractorRotation: 0,
+  protractorAngle: 90,
+  toggleProtractor: () => set((s) => ({ protractorVisible: !s.protractorVisible })),
+  setProtractorPos: (protractorPos) => set({ protractorPos }),
+  setProtractorRadius: (protractorRadius) => set({ protractorRadius }),
+  setProtractorRotation: (protractorRotation) => set({ protractorRotation }),
+  setProtractorAngle: (protractorAngle) => set({ protractorAngle }),
 }))
