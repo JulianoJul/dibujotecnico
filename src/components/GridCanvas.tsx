@@ -64,30 +64,16 @@ function isRulerInsideCanvas(rulerX: number, rulerY: number, length: number, rot
   return corners.every(c => c.x >= RULER - EPS && c.x <= RULER + WIDTH + EPS && c.y >= -EPS && c.y <= HEIGHT + EPS)
 }
 
-function isCompassInsideCanvas(cx: number, cy: number, length: number, opening: number, rotation: number): boolean {
+function isCompassInsideCanvas(cx: number, cy: number, length: number, rotation: number): boolean {
   const theta = (rotation * Math.PI) / 180
   const cosRot = Math.cos(theta)
   const sinRot = Math.sin(theta)
 
-  const radL = ((90 - opening / 2) * Math.PI) / 180
-  const lx1 = length * Math.cos(radL)
-  const ly1 = length * Math.sin(radL)
+  const center = { x: cx, y: cy }
+  const leftTip = { x: cx - length, y: cy }
+  const rightTip = { x: cx + length * cosRot, y: cy + length * sinRot }
 
-  const radR = ((90 + opening / 2) * Math.PI) / 180
-  const lx2 = length * Math.cos(radR)
-  const ly2 = length * Math.sin(radR)
-
-  const hinge = { x: cx, y: cy }
-  const leftTip = {
-    x: cx + lx1 * cosRot - ly1 * sinRot,
-    y: cy + lx1 * sinRot + ly1 * cosRot
-  }
-  const rightTip = {
-    x: cx + lx2 * cosRot - ly2 * sinRot,
-    y: cy + lx2 * sinRot + ly2 * cosRot
-  }
-
-  const vertices = [hinge, leftTip, rightTip]
+  const vertices = [center, leftTip, rightTip]
   const EPS = 0.01
   return vertices.every(v => v.x >= RULER - EPS && v.x <= RULER + WIDTH + EPS && v.y >= -EPS && v.y <= HEIGHT + EPS)
 }
@@ -104,7 +90,7 @@ export default function GridCanvas() {
   const setRulerRotation = useCanvasStore((s) => s.setRulerRotation)
   const compassVisible = useCanvasStore((s) => s.compassVisible)
   const compassPos = useCanvasStore((s) => s.compassPos)
-  const compassOpening = useCanvasStore((s) => s.compassOpening)
+  const compassDrawingMode = useCanvasStore((s) => s.compassDrawingMode)
   const compassRotation = useCanvasStore((s) => s.compassRotation)
   const compassLegLength = useCanvasStore((s) => s.compassLegLength)
 
@@ -113,7 +99,7 @@ export default function GridCanvas() {
   const [resizeStart, setResizeStart] = useState<{ clientX: number; clientY: number; length: number; rulerX: number } | null>(null)
   const [dragStart, setDragStart] = useState<{ clientX: number; clientY: number; rulerX: number; rulerY: number } | null>(null)
   const [rotationStart, setRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
-  const [openingStart, setOpeningStart] = useState<{ clientX: number; clientY: number; startOpening: number } | null>(null)
+  const [compassRadiusStart, setCompassRadiusStart] = useState<{ clientX: number; startRadius: number; compassX: number } | null>(null)
   const [compassDragStart, setCompassDragStart] = useState<{ clientX: number; clientY: number; compassX: number; compassY: number } | null>(null)
   const [compassRotationStart, setCompassRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
   const lastClick = useRef(0)
@@ -332,16 +318,25 @@ export default function GridCanvas() {
       setResizeStart(null)
       setDragStart(null)
       setRotationStart(null)
-      setOpeningStart(null)
+      setCompassRadiusStart(null)
       setCompassDragStart(null)
       setCompassRotationStart(null)
+
+      // Finalize compass drawing if active
+      if (compassDrawingMode) {
+        const st = useCanvasStore.getState()
+        if (st.currentPoints.length >= 2) {
+          st.addPath({ points: [...st.currentPoints], color: '#1a1a1a', strokeWidth: 1.5 })
+        }
+        st.clearCurrent()
+      }
     }
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
-  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setOpeningStart, setCompassDragStart, setCompassRotationStart])
+  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setCompassRadiusStart, setCompassDragStart, setCompassRotationStart, compassDrawingMode])
 
   useEffect(() => {
-    if (!resizeStart && !dragStart && !rotationStart && !openingStart && !compassDragStart && !compassRotationStart) return
+    if (!resizeStart && !dragStart && !rotationStart && !compassRadiusStart && !compassDragStart && !compassRotationStart) return
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (resizeStart) {
@@ -385,22 +380,11 @@ export default function GridCanvas() {
         if (isRulerInsideCanvas(rulerPos.x, rulerPos.y, effectiveLen, newRotation)) {
           setRulerRotation(newRotation)
         }
-      } else if (openingStart) {
-        const theta = (compassRotation * Math.PI) / 180
-        const deltaX = e.clientX - openingStart.clientX
-        const deltaY = e.clientY - openingStart.clientY
-        const projectedDeltaY = deltaX * -Math.sin(theta) + deltaY * Math.cos(theta)
-
-        const L = compassLegLength
-        const startCy = L * Math.cos((openingStart.startOpening / 2) * Math.PI / 180) * 0.6
-        const newCy = startCy + projectedDeltaY
-
-        const ratio = Math.max(Math.cos(60 * Math.PI / 180), Math.min(Math.cos(5 * Math.PI / 180), newCy / (L * 0.6)))
-        const halfAngleRad = Math.acos(ratio)
-        const newOpening = Math.round(halfAngleRad * 2 * 180 / Math.PI)
-
-        if (isCompassInsideCanvas(compassPos.x, compassPos.y, L, newOpening, compassRotation)) {
-          useCanvasStore.getState().setCompassOpening(newOpening)
+      } else if (compassRadiusStart) {
+        const deltaX = compassRadiusStart.clientX - e.clientX
+        const newRadius = Math.max(20, compassRadiusStart.startRadius + deltaX)
+        if (isCompassInsideCanvas(compassPos.x, compassPos.y, newRadius, compassRotation)) {
+          useCanvasStore.getState().setCompassLegLength(newRadius)
         }
       } else if (compassDragStart) {
         const deltaX = e.clientX - compassDragStart.clientX
@@ -409,7 +393,7 @@ export default function GridCanvas() {
         const newCompassX = snapGrid(compassDragStart.compassX + deltaX)
         const newCompassY = snapGrid(compassDragStart.compassY + deltaY)
 
-        if (isCompassInsideCanvas(newCompassX, newCompassY, compassLegLength, compassOpening, compassRotation)) {
+        if (isCompassInsideCanvas(newCompassX, newCompassY, compassLegLength, compassRotation)) {
           useCanvasStore.getState().setCompassPos({ x: newCompassX, y: newCompassY })
         }
       } else if (compassRotationStart) {
@@ -421,15 +405,34 @@ export default function GridCanvas() {
         if (newRotation < 0) newRotation += 360
 
         newRotation = Math.round(newRotation)
-        if (isCompassInsideCanvas(compassPos.x, compassPos.y, compassLegLength, compassOpening, newRotation)) {
-          useCanvasStore.getState().setCompassRotation(newRotation)
+        if (isCompassInsideCanvas(compassPos.x, compassPos.y, compassLegLength, newRotation)) {
+          const st = useCanvasStore.getState()
+          if (compassDrawingMode) {
+            const prevRot = st.compassRotation
+            let diff = newRotation - prevRot
+            if (diff > 180) diff -= 360
+            if (diff < -180) diff += 360
+            
+            const steps = Math.max(1, Math.abs(diff))
+            const pts: number[] = []
+            for (let i = 1; i <= steps; i++) {
+              const ang = prevRot + (diff * i) / steps
+              const rad = (ang * Math.PI) / 180
+              pts.push(compassPos.x + compassLegLength * Math.cos(rad) - RULER)
+              pts.push(compassPos.y + compassLegLength * Math.sin(rad))
+            }
+            if (pts.length > 0) {
+              st.addPointToCurrent(pts as any)
+            }
+          }
+          st.setCompassRotation(newRotation)
         }
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, openingStart, compassDragStart, compassRotationStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassOpening])
+  }, [resizeStart, dragStart, rotationStart, compassRadiusStart, compassDragStart, compassRotationStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassDrawingMode])
 
   const previewLine =
     tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
@@ -628,14 +631,63 @@ export default function GridCanvas() {
           <Group
             x={compassPos.x}
             y={compassPos.y}
-            rotation={compassRotation}
             onClick={cancelBubble}
             onDblClick={cancelBubble}
           >
-            {/* Hinge joint drag handle */}
+            {/* Left leg (fixed radius indicator) */}
+            <Line
+              points={[0, 0, -compassLegLength, 0]}
+              stroke="#555"
+              strokeWidth={3}
+              lineCap="round"
+            />
+
+            {/* Right leg (rotatable drawing line) */}
+            <Line
+              points={[
+                0,
+                0,
+                compassLegLength * Math.cos((compassRotation * Math.PI) / 180),
+                compassLegLength * Math.sin((compassRotation * Math.PI) / 180),
+              ]}
+              stroke="#555"
+              strokeWidth={3}
+              lineCap="round"
+            />
+
+            {/* Left Handle (Radius resizing) */}
             <Group
+              x={-compassLegLength}
+              y={0}
               onClick={cancelBubble}
               onDblClick={cancelBubble}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                setCompassRadiusStart({
+                  clientX: e.evt.clientX,
+                  startRadius: compassLegLength,
+                  compassX: compassPos.x,
+                })
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'ew-resize'
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }}
+            >
+              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
+            </Group>
+
+            {/* Center Handle (Move & Toggle Drawing Mode) */}
+            <Group
+              onClick={cancelBubble}
+              onDblClick={(e) => {
+                e.cancelBubble = true
+                useCanvasStore.getState().setCompassDrawingMode(!compassDrawingMode)
+              }}
               onMouseDown={(e) => {
                 e.cancelBubble = true
                 setCompassDragStart({
@@ -654,73 +706,13 @@ export default function GridCanvas() {
                 if (stage) stage.container().style.cursor = 'default'
               }}
             >
-              <Circle radius={6} fill="#555" stroke="#333" strokeWidth={1} />
+              <Circle radius={7} fill={compassDrawingMode ? '#3b82f6' : '#555'} stroke="#333" strokeWidth={1} />
             </Group>
 
-            {/* Left leg */}
-            <Line
-              points={[
-                0,
-                0,
-                compassLegLength * Math.cos(((90 - compassOpening / 2) * Math.PI) / 180),
-                compassLegLength * Math.sin(((90 - compassOpening / 2) * Math.PI) / 180),
-              ]}
-              stroke="#555"
-              strokeWidth={3}
-              lineCap="round"
-            />
-
-            {/* Right leg */}
-            <Line
-              points={[
-                0,
-                0,
-                compassLegLength * Math.cos(((90 + compassOpening / 2) * Math.PI) / 180),
-                compassLegLength * Math.sin(((90 + compassOpening / 2) * Math.PI) / 180),
-              ]}
-              stroke="#555"
-              strokeWidth={3}
-              lineCap="round"
-            />
-
-            {/* Slider track line */}
-            <Line
-              points={[0, 0, 0, compassLegLength * Math.cos((compassOpening / 2) * Math.PI / 180) * 0.6]}
-              stroke="#888"
-              strokeWidth={1}
-              dash={[2, 2]}
-            />
-
-            {/* Slider Handle */}
+            {/* Right Handle (Rotation & Drawing) */}
             <Group
-              x={0}
-              y={compassLegLength * Math.cos((compassOpening / 2) * Math.PI / 180) * 0.6}
-              onClick={cancelBubble}
-              onDblClick={cancelBubble}
-              onMouseDown={(e) => {
-                e.cancelBubble = true
-                setOpeningStart({
-                  clientX: e.evt.clientX,
-                  clientY: e.evt.clientY,
-                  startOpening: compassOpening,
-                })
-              }}
-              onMouseEnter={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'ns-resize'
-              }}
-              onMouseLeave={(e) => {
-                const stage = e.target.getStage()
-                if (stage) stage.container().style.cursor = 'default'
-              }}
-            >
-              <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
-            </Group>
-
-            {/* Rotation Handle (at the end of the right leg) */}
-            <Group
-              x={compassLegLength * Math.cos(((90 - compassOpening / 2) * Math.PI) / 180)}
-              y={compassLegLength * Math.sin(((90 - compassOpening / 2) * Math.PI) / 180)}
+              x={compassLegLength * Math.cos((compassRotation * Math.PI) / 180)}
+              y={compassLegLength * Math.sin((compassRotation * Math.PI) / 180)}
               onClick={cancelBubble}
               onDblClick={cancelBubble}
               onMouseDown={(e) => {
@@ -730,6 +722,15 @@ export default function GridCanvas() {
                   const clientCenterX = rect.left + compassPos.x
                   const clientCenterY = rect.top + compassPos.y
                   const currentMouseAngle = Math.atan2(e.evt.clientY - clientCenterY, e.evt.clientX - clientCenterX)
+                  
+                  // Initialize a new current path for drawing if drawing mode is active
+                  if (compassDrawingMode) {
+                    useCanvasStore.getState().addPointToCurrent([
+                      compassPos.x + compassLegLength * Math.cos((compassRotation * Math.PI) / 180) - RULER,
+                      compassPos.y + compassLegLength * Math.sin((compassRotation * Math.PI) / 180)
+                    ])
+                  }
+
                   setCompassRotationStart({
                     startMouseAngle: currentMouseAngle,
                     startRotation: compassRotation,
@@ -747,7 +748,7 @@ export default function GridCanvas() {
                 if (stage) stage.container().style.cursor = 'default'
               }}
             >
-              <Circle radius={5} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
+              <Circle radius={6} fill="#b8960f" stroke="#8a720c" strokeWidth={1} />
             </Group>
           </Group>
         </Layer>

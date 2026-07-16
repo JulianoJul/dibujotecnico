@@ -31,13 +31,14 @@ interface CanvasState {
   setRulerRotation: (rot: number) => void
   compassVisible: boolean
   compassPos: { x: number; y: number }
-  compassOpening: number
+  compassDrawingMode: boolean
   compassRotation: number
   compassLegLength: number
   toggleCompass: () => void
   setCompassPos: (pos: { x: number; y: number }) => void
-  setCompassOpening: (angle: number) => void
+  setCompassDrawingMode: (mode: boolean) => void
   setCompassRotation: (rot: number) => void
+  setCompassLegLength: (length: number) => void
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
@@ -81,11 +82,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   setRulerRotation: (rulerRotation) => set({ rulerRotation }),
   compassVisible: false,
   compassPos: { x: 200, y: 200 },
-  compassOpening: 45,
+  compassDrawingMode: false,
   compassRotation: 0,
   compassLegLength: 120,
   toggleCompass: () => set((s) => ({ compassVisible: !s.compassVisible })),
   setCompassPos: (compassPos) => set({ compassPos }),
-  setCompassOpening: (compassOpening) => set({ compassOpening }),
+  setCompassDrawingMode: (compassDrawingMode) => set({ compassDrawingMode }),
   setCompassRotation: (compassRotation) => set({ compassRotation }),
+  setCompassLegLength: (compassLegLength) => set({ compassLegLength }),
 }))
