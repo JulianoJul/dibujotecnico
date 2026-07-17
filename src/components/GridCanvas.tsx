@@ -87,7 +87,22 @@ export default function GridCanvas() {
   const effectiveLen = resizeLen ?? rulerLength
 
   const intersections = useMemo(() => {
-    return findAllIntersections(paths, currentPoints)
+    const list = findAllIntersections(paths, currentPoints)
+    // Add centers of cross marks (Point tool and Protractor marks) as snapping anchors
+    for (const path of paths) {
+      if (path.points.length === 10) {
+        const pts = path.points
+        const isCross = 
+          pts[1] === pts[3] && 
+          pts[3] === pts[5] && 
+          pts[4] === pts[6] && 
+          pts[6] === pts[8]
+        if (isCross) {
+          list.push({ x: pts[4], y: pts[5] })
+        }
+      }
+    }
+    return list
   }, [paths, currentPoints])
 
   const isCloseToAnyHandle = useCallback((mx: number, my: number) => {
