@@ -283,16 +283,37 @@ export default function GridCanvas() {
   const rulerContent = useMemo(() => {
     const ticks: React.ReactNode[] = []
     const labels: React.ReactNode[] = []
+    
+    // Flip text by 180 degrees if the ruler is rotated to the left hemisphere
+    const shouldFlip = rulerRotation > 90 && rulerRotation <= 270
+    const textRotation = shouldFlip ? 180 : 0
+
     for (let x = 0; x <= effectiveLen; x += GRID) {
       const cm = x % 100 === 0
       ticks.push(<Line key={`dt-${x}`} points={[x, 0, x, cm ? RULER_H : RULER_H / 2]} stroke="#333" strokeWidth={cm ? 1 : 0.5} listening={false} />)
     }
     for (let i = 0; i <= effectiveLen / 100; i++) {
       const l = `${i}`
-      labels.push(<Text key={`dl-${i}`} x={i * 100 - l.length * 3} y={3} text={l} fontSize={9} fill="#333" fontFamily="monospace" listening={false} />)
+      const txtW = l.length * 6
+      const txtH = 9
+      labels.push(
+        <Text
+          key={`dl-${i}`}
+          x={i * 100}
+          y={8}
+          text={l}
+          fontSize={9}
+          fill="#333"
+          fontFamily="monospace"
+          offsetX={txtW / 2}
+          offsetY={txtH / 2}
+          rotation={textRotation}
+          listening={false}
+        />
+      )
     }
     return { ticks, labels }
-  }, [effectiveLen])
+  }, [effectiveLen, rulerRotation])
 
   const finalizePoly = useCallback(() => {
     const st = useCanvasStore.getState()
@@ -752,15 +773,17 @@ export default function GridCanvas() {
 
             {/* Total ruler length display */}
             <Text
-              x={effectiveLen / 2 - 40}
-              y={RULER_H - 14}
-              width={80}
+              x={effectiveLen / 2}
+              y={RULER_H - 9}
               text={`${(effectiveLen / 100).toFixed(1)} cm`}
               fontSize={10}
               fontStyle="bold"
               fontFamily="monospace"
               fill="#8a720c"
               align="center"
+              offsetX={40} // half of custom width 80
+              offsetY={5}
+              rotation={rulerRotation > 90 && rulerRotation <= 270 ? 180 : 0}
               listening={false}
             />
 
@@ -807,14 +830,16 @@ export default function GridCanvas() {
 
             {/* Rotation label */}
             <Text
-              x={effectiveLen / 2 - 20}
-              y={-32}
-              width={40}
+              x={effectiveLen / 2}
+              y={-27}
               text={`${rulerRotation}°`}
               fontSize={10}
               fontFamily="monospace"
               fill="#8a720c"
               align="center"
+              offsetX={20}
+              offsetY={5}
+              rotation={rulerRotation > 90 && rulerRotation <= 270 ? 180 : 0}
             />
 
             {/* Right resize handle */}
@@ -1008,14 +1033,18 @@ export default function GridCanvas() {
                   elements.push(
                     <Text
                       key={`plabel-${i}`}
-                      x={lx - 8}
-                      y={ly - 5}
+                      x={lx}
+                      y={ly}
                       text={`${i}`}
                       fontSize={8}
                       fill="#111"
                       fontFamily="monospace"
                       align="center"
                       verticalAlign="middle"
+                      offsetX={8} // Center the text box
+                      offsetY={4}
+                      rotation={-protractorRotation}
+                      listening={false}
                     />
                   )
                 }
@@ -1037,14 +1066,17 @@ export default function GridCanvas() {
                     dash={[4, 2]}
                   />
                   <Text
-                    x={tx * 0.5 - 12}
-                    y={ty * 0.5 - 12}
+                    x={tx * 0.5}
+                    y={ty * 0.5}
                     text={`${protractorAngle}°`}
                     fontSize={11}
                     fontStyle="bold"
                     fill="#15803d"
                     fontFamily="monospace"
                     backgroundColor="white"
+                    offsetX={12} // Center it
+                    offsetY={6}
+                    rotation={-protractorRotation}
                   />
                 </Group>
               )
