@@ -71,6 +71,25 @@ export default function GridCanvas() {
 
   const effectiveLen = resizeLen ?? rulerLength
 
+  const compassGeometry = useMemo(() => {
+    const L = 200 // physical leg length
+    const R = compassLegLength
+    const rotRad = (compassRotation * Math.PI) / 180
+    const cos = Math.cos(rotRad)
+    const sin = Math.sin(rotRad)
+
+    // height of hinge above the line segment from (0,0) to (R*cos, R*sin)
+    const h = Math.sqrt(Math.max(0, L * L - (R / 2) * (R / 2)))
+    const mx = (R / 2) * cos
+    const my = (R / 2) * sin
+
+    // Hinge B perpendicular to leg direction pointing upward
+    const bx = mx + h * sin
+    const by = my - h * cos
+
+    return { bx, by, px: R * cos, py: R * sin }
+  }, [compassLegLength, compassRotation])
+
   const intersections = useMemo(() => {
     const list = findAllIntersections(paths, currentPoints)
     // Add centers of cross marks (Point tool and Protractor marks) as snapping anchors
@@ -859,15 +878,15 @@ export default function GridCanvas() {
             x={compassPos.x}
             y={compassPos.y}
           >
-            {/* Left leg (fixed radius indicator) */}
+            {/* Radius guide line (dashed) */}
             <Line
               points={[0, 0, -compassLegLength, 0]}
               stroke={COLORS.mediumGray}
-              strokeWidth={3}
-              lineCap="round"
+              strokeWidth={1}
+              dash={[3, 3]}
               listening={false}
             />
-            {/* Radius measurement on left leg */}
+            {/* Radius measurement guide */}
             <Group
               x={-compassLegLength / 2}
               y={-14}
@@ -896,17 +915,32 @@ export default function GridCanvas() {
               />
             </Group>
 
-            {/* Right leg (rotatable drawing line) */}
+            {/* Needle leg (from hinge to center handle) */}
             <Line
-              points={[
-                0,
-                0,
-                compassLegLength * Math.cos((compassRotation * Math.PI) / 180),
-                compassLegLength * Math.sin((compassRotation * Math.PI) / 180),
-              ]}
+              points={[compassGeometry.bx, compassGeometry.by, 0, 0]}
               stroke={COLORS.mediumGray}
               strokeWidth={3}
               lineCap="round"
+              listening={false}
+            />
+
+            {/* Pencil leg (from hinge to pencil tip) */}
+            <Line
+              points={[compassGeometry.bx, compassGeometry.by, compassGeometry.px, compassGeometry.py]}
+              stroke={COLORS.mediumGray}
+              strokeWidth={3}
+              lineCap="round"
+              listening={false}
+            />
+
+            {/* Hinge joint visual indicator */}
+            <Circle
+              x={compassGeometry.bx}
+              y={compassGeometry.by}
+              radius={4.5}
+              fill={COLORS.mediumGray}
+              stroke={COLORS.darkGray}
+              strokeWidth={1}
               listening={false}
             />
 
@@ -938,8 +972,8 @@ export default function GridCanvas() {
 
             {/* Right Handle (Rotation & Drawing) */}
             <InteractiveHandle
-              x={compassLegLength * Math.cos((compassRotation * Math.PI) / 180)}
-              y={compassLegLength * Math.sin((compassRotation * Math.PI) / 180)}
+              x={compassGeometry.px}
+              y={compassGeometry.py}
               cursorType="rotate"
               radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
@@ -950,8 +984,8 @@ export default function GridCanvas() {
                 
                 if (compassDrawingMode) {
                   useCanvasStore.getState().addPointToCurrent([
-                    compassPos.x + compassLegLength * Math.cos(degToRad(compassRotation)) - SIZES.rulerWidth,
-                    compassPos.y + compassLegLength * Math.sin(degToRad(compassRotation))
+                    compassPos.x + compassGeometry.px - SIZES.rulerWidth,
+                    compassPos.y + compassGeometry.py
                   ])
                 }
 
