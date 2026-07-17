@@ -4,39 +4,26 @@ import type Konva from 'konva'
 import { useCanvasStore } from '../store/useCanvasStore'
 import InteractiveHandle from './InteractiveHandle'
 import { COLORS, SIZES, LIMITS } from '../constants/theme'
-import { degToRad, getMouseAngleRelativeTo, isPointInsideCanvas, projectPointToSegment, getDistance, calculatePathLength, findAllIntersections } from '../utils/math'
-
-const GRID = 10
-const RULER = 30
-const RULER_H = 40
+import { degToRad, getMouseAngleRelativeTo, projectPointToSegment, getDistance, calculatePathLength, findAllIntersections, isToolInsideCanvas, createCrossMarkPath } from '../utils/math'
 
 const snapGrid = (v: number, enabled: boolean) => {
   if (!enabled) return v
-  const rounded = Math.round(v / GRID) * GRID
+  const rounded = Math.round(v / SIZES.grid) * SIZES.grid
   return Math.abs(v - rounded) < 3.5 ? rounded : v
 }
 
-function isRulerInsideCanvas(rulerX: number, rulerY: number, length: number, rotation: number, canvasWidth: number, canvasHeight: number): boolean {
-  const theta = degToRad(rotation)
-  const cos = Math.cos(theta)
-  const sin = Math.sin(theta)
-  const rx = rulerX + RULER
-  const ry = rulerY
+export type Interaction =
+  | { type: 'ruler-drag'; clientX: number; clientY: number; objX: number; objY: number }
+  | { type: 'ruler-resize'; clientX: number; clientY: number; length: number; objX: number }
+  | { type: 'ruler-rotate'; startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number }
+  | { type: 'compass-drag'; clientX: number; clientY: number; objX: number; objY: number }
+  | { type: 'compass-resize'; clientX: number; startRadius: number; objX: number }
+  | { type: 'compass-rotate'; startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number }
+  | { type: 'protractor-drag'; clientX: number; clientY: number; objX: number; objY: number }
+  | { type: 'protractor-resize'; clientX: number; startRadius: number }
+  | { type: 'protractor-rotate'; startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number }
+  | { type: 'protractor-angle'; startAngle: number; clientCenterX: number; clientCenterY: number }
 
-  // Center handle position
-  const cx = rx + (length / 2) * cos - (RULER_H / 2) * sin
-  const cy = ry + (length / 2) * sin + (RULER_H / 2) * cos
-
-  return isPointInsideCanvas(cx, cy, RULER, canvasWidth, canvasHeight)
-}
-
-function isCompassInsideCanvas(cx: number, cy: number, _length: number, _rotation: number, canvasWidth: number, canvasHeight: number): boolean {
-  return isPointInsideCanvas(cx, cy, RULER, canvasWidth, canvasHeight)
-}
-
-function isProtractorInsideCanvas(cx: number, cy: number, _radius: number, _rotation: number, canvasWidth: number, canvasHeight: number): boolean {
-  return isPointInsideCanvas(cx, cy, RULER, canvasWidth, canvasHeight)
-}
 
 export default function GridCanvas() {
   const tool = useCanvasStore((s) => s.tool)
@@ -65,22 +52,12 @@ export default function GridCanvas() {
   const gridSnapEnabled = useCanvasStore((s) => s.gridSnapEnabled)
   const isExporting = useCanvasStore((s) => s.isExporting)
 
-  const STAGE_W = canvasWidth + RULER
-  const STAGE_H = canvasHeight + RULER
+  const STAGE_W = canvasWidth + SIZES.rulerWidth
+  const STAGE_H = canvasHeight + SIZES.rulerWidth
 
   const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
   const [resizeLen, setResizeLen] = useState<number | null>(null)
-  const [resizeStart, setResizeStart] = useState<{ clientX: number; clientY: number; length: number; rulerX: number } | null>(null)
-  const [dragStart, setDragStart] = useState<{ clientX: number; clientY: number; rulerX: number; rulerY: number } | null>(null)
-  const [rotationStart, setRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
-  const [compassRadiusStart, setCompassRadiusStart] = useState<{ clientX: number; startRadius: number; compassX: number } | null>(null)
-  const [compassDragStart, setCompassDragStart] = useState<{ clientX: number; clientY: number; compassX: number; compassY: number } | null>(null)
-  const [compassRotationStart, setCompassRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
-  
-  const [protractorDragStart, setProtractorDragStart] = useState<{ clientX: number; clientY: number; px: number; py: number } | null>(null)
-  const [protractorRotationStart, setProtractorRotationStart] = useState<{ startMouseAngle: number; startRotation: number; clientCenterX: number; clientCenterY: number } | null>(null)
-  const [protractorRadiusStart, setProtractorRadiusStart] = useState<{ clientX: number; startRadius: number } | null>(null)
-  const [protractorAngleStart, setProtractorAngleStart] = useState<{ startAngle: number; clientCenterX: number; clientCenterY: number } | null>(null)
+  const [interaction, setInteraction] = useState<Interaction | null>(null)
   const lastClick = useRef(0)
   const freehand = useRef(false)
   const rulerGroupRef = useRef<Konva.Group>(null)
@@ -120,12 +97,12 @@ export default function GridCanvas() {
       const theta = degToRad(rulerRotation)
       const cos = Math.cos(theta)
       const sin = Math.sin(theta)
-      const rx = rulerPos.x + RULER
+      const rx = rulerPos.x + SIZES.rulerWidth
       const ry = rulerPos.y
       
-      if (checkDist(rx + (effectiveLen / 2) * cos - (RULER_H / 2) * sin, ry + (effectiveLen / 2) * sin + (RULER_H / 2) * cos)) return true
+      if (checkDist(rx + (effectiveLen / 2) * cos - (SIZES.rulerHeight / 2) * sin, ry + (effectiveLen / 2) * sin + (SIZES.rulerHeight / 2) * cos)) return true
       if (checkDist(rx + (effectiveLen / 2) * cos - (-15) * sin, ry + (effectiveLen / 2) * sin + (-15) * cos)) return true
-      if (checkDist(rx + effectiveLen * cos - (RULER_H / 2) * sin, ry + effectiveLen * sin + (RULER_H / 2) * cos)) return true
+      if (checkDist(rx + effectiveLen * cos - (SIZES.rulerHeight / 2) * sin, ry + effectiveLen * sin + (SIZES.rulerHeight / 2) * cos)) return true
     }
 
     if (compassVisible) {
@@ -162,7 +139,7 @@ export default function GridCanvas() {
       let bestIntersection = null
       let bestIntersectionDist = 8 // Snap radius of 8px
       for (const pt of intersections) {
-        const ptGlobalX = pt.x + RULER
+        const ptGlobalX = pt.x + SIZES.rulerWidth
         const ptGlobalY = pt.y
         const dist = getDistance(mx, my, ptGlobalX, ptGlobalY)
         if (dist < bestIntersectionDist) {
@@ -180,7 +157,7 @@ export default function GridCanvas() {
       const theta = degToRad(rulerRotation)
       const cos = Math.cos(theta)
       const sin = Math.sin(theta)
-      const rx = rulerPos.x + RULER
+      const rx = rulerPos.x + SIZES.rulerWidth
       const ry = rulerPos.y
 
       // Top edge
@@ -188,8 +165,8 @@ export default function GridCanvas() {
       const tr = { x: rx + effectiveLen * cos, y: ry + effectiveLen * sin }
       
       // Bottom edge
-      const bl = { x: rx - RULER_H * sin, y: ry + RULER_H * cos }
-      const br = { x: rx + effectiveLen * cos - RULER_H * sin, y: ry + effectiveLen * sin + RULER_H * cos }
+      const bl = { x: rx - SIZES.rulerHeight * sin, y: ry + SIZES.rulerHeight * cos }
+      const br = { x: rx + effectiveLen * cos - SIZES.rulerHeight * sin, y: ry + effectiveLen * sin + SIZES.rulerHeight * cos }
 
       const dx = mx - tl.x
       const dy = my - tl.y
@@ -199,10 +176,10 @@ export default function GridCanvas() {
       // Local X coordinate (distance along the top edge)
       const localX = dx * cos + dy * sin
       
-      const isInsideOrNearBody = localX >= -20 && localX <= effectiveLen + 20 && localY >= -20 && localY <= RULER_H + 20
+      const isInsideOrNearBody = localX >= -20 && localX <= effectiveLen + 20 && localY >= -20 && localY <= SIZES.rulerHeight + 20
 
       if (isInsideOrNearBody) {
-        if (localY <= RULER_H / 2) {
+        if (localY <= SIZES.rulerHeight / 2) {
           // Snap to top edge
           const proj = projectPointToSegment(mx, my, tl.x, tl.y, tr.x, tr.y)
           return { x: proj.x, y: proj.y }
@@ -240,13 +217,13 @@ export default function GridCanvas() {
     const minor: number[][] = []
     const major: number[][] = []
     const ext = 200
-    for (let x = -ext; x <= canvasWidth + ext; x += GRID) {
-      const arr = x % (GRID * 10) === 0 ? major : minor
-      arr.push([x + RULER, -ext, x + RULER, canvasHeight + ext])
+    for (let x = -ext; x <= canvasWidth + ext; x += SIZES.grid) {
+      const arr = x % (SIZES.grid * 10) === 0 ? major : minor
+      arr.push([x + SIZES.rulerWidth, -ext, x + SIZES.rulerWidth, canvasHeight + ext])
     }
-    for (let y = -ext; y <= canvasHeight + ext; y += GRID) {
-      const arr = y % (GRID * 10) === 0 ? major : minor
-      arr.push([-ext + RULER, y, canvasWidth + ext + RULER, y])
+    for (let y = -ext; y <= canvasHeight + ext; y += SIZES.grid) {
+      const arr = y % (SIZES.grid * 10) === 0 ? major : minor
+      arr.push([-ext + SIZES.rulerWidth, y, canvasWidth + ext + SIZES.rulerWidth, y])
     }
     return { minor, major }
   }, [canvasWidth, canvasHeight])
@@ -255,9 +232,9 @@ export default function GridCanvas() {
     const els: React.ReactNode[] = []
     const tc = '#555'
 
-    for (let gx = 0; gx <= canvasWidth; gx += GRID) {
-      const sx = gx + RULER
-      const cm = gx % (GRID * 10) === 0
+    for (let gx = 0; gx <= canvasWidth; gx += SIZES.grid) {
+      const sx = gx + SIZES.rulerWidth
+      const cm = gx % (SIZES.grid * 10) === 0
       const len = cm ? 10 : 5
       els.push(<Line key={`br-${gx}`} points={[sx, canvasHeight, sx, canvasHeight + len]} stroke={tc} strokeWidth={cm ? 1 : 0.5} listening={false} />)
       if (cm) {
@@ -266,14 +243,14 @@ export default function GridCanvas() {
       }
     }
 
-    for (let gy = 0; gy <= canvasHeight; gy += GRID) {
+    for (let gy = 0; gy <= canvasHeight; gy += SIZES.grid) {
       const sy = gy
-      const cm = gy % (GRID * 10) === 0
+      const cm = gy % (SIZES.grid * 10) === 0
       const len = cm ? 10 : 5
-      els.push(<Line key={`lr-${gy}`} points={[RULER, sy, RULER - len, sy]} stroke={tc} strokeWidth={cm ? 1 : 0.5} listening={false} />)
+      els.push(<Line key={`lr-${gy}`} points={[SIZES.rulerWidth, sy, SIZES.rulerWidth - len, sy]} stroke={tc} strokeWidth={cm ? 1 : 0.5} listening={false} />)
       if (cm) {
         const l = `${(canvasHeight - gy) / 100}`
-        els.push(<Text key={`ll-${gy}`} x={RULER - 16} y={sy - 4} text={l} fontSize={9} fill={tc} fontFamily="monospace" listening={false} />)
+        els.push(<Text key={`ll-${gy}`} x={SIZES.rulerWidth - 16} y={sy - 4} text={l} fontSize={9} fill={tc} fontFamily="monospace" listening={false} />)
       }
     }
 
@@ -287,9 +264,9 @@ export default function GridCanvas() {
     // Keep text perfectly horizontal (upright) relative to the screen at all times
     const textRotation = -rulerRotation
 
-    for (let x = 0; x <= effectiveLen; x += GRID) {
+    for (let x = 0; x <= effectiveLen; x += SIZES.grid) {
       const cm = x % 100 === 0
-      ticks.push(<Line key={`dt-${x}`} points={[x, 0, x, cm ? RULER_H : RULER_H / 2]} stroke="#333" strokeWidth={cm ? 1 : 0.5} listening={false} />)
+      ticks.push(<Line key={`dt-${x}`} points={[x, 0, x, cm ? SIZES.rulerHeight : SIZES.rulerHeight / 2]} stroke={COLORS.darkGray} strokeWidth={cm ? 1 : 0.5} listening={false} />)
     }
     for (let i = 0; i <= effectiveLen / 100; i++) {
       const l = `${i}`
@@ -302,7 +279,7 @@ export default function GridCanvas() {
           y={8}
           text={l}
           fontSize={9}
-          fill="#333"
+          fill={COLORS.darkGray}
           fontFamily="monospace"
           offsetX={txtW / 2}
           offsetY={txtH / 2}
@@ -312,7 +289,7 @@ export default function GridCanvas() {
       )
     }
     return { ticks, labels }
-  }, [effectiveLen, rulerRotation, rotationStart])
+  }, [effectiveLen, rulerRotation, interaction])
 
   const finalizePoly = useCallback(() => {
     const st = useCanvasStore.getState()
@@ -333,7 +310,7 @@ export default function GridCanvas() {
 
     freehand.current = true
     const snapped = getSnappedPosition(pos.x, pos.y)
-    const sx = snapped.x - RULER
+    const sx = snapped.x - SIZES.rulerWidth
     const sy = snapped.y
     st.addPointToCurrent([sx, sy])
   }, [getSnappedPosition, isCloseToAnyHandle])
@@ -356,21 +333,15 @@ export default function GridCanvas() {
       lastClick.current = now
 
       const snapped = getSnappedPosition(pos.x, pos.y)
-      st.addPointToCurrent([snapped.x - RULER, snapped.y])
+      st.addPointToCurrent([snapped.x - SIZES.rulerWidth, snapped.y])
     } else if (st.tool === 'point') {
       const snapped = getSnappedPosition(pos.x, pos.y)
-      const mx = snapped.x - RULER
+      const mx = snapped.x - SIZES.rulerWidth
       const my = snapped.y
       const size = SIZES.crossMarkSize
 
       st.addPath({
-        points: [
-          mx - size, my,
-          mx + size, my,
-          mx, my,
-          mx, my - size,
-          mx, my + size
-        ],
+        points: createCrossMarkPath(mx, my, size),
         color: COLORS.black,
         strokeWidth: SIZES.strokeMedium
       })
@@ -395,7 +366,7 @@ export default function GridCanvas() {
       const pos = e.target.getStage()?.getPointerPosition()
       if (!pos || isCloseToAnyHandle(pos.x, pos.y)) return
       const snapped = getSnappedPosition(pos.x, pos.y)
-      const sx = snapped.x - RULER
+      const sx = snapped.x - SIZES.rulerWidth
       const sy = snapped.y
       const st = useCanvasStore.getState()
       const pts = st.currentPoints
@@ -409,7 +380,7 @@ export default function GridCanvas() {
       const pos = e.target.getStage()?.getPointerPosition()
       if (!pos || isCloseToAnyHandle(pos.x, pos.y)) { setPreviewPos(null); return }
       const snapped = getSnappedPosition(pos.x, pos.y)
-      setPreviewPos({ x: snapped.x - RULER, y: snapped.y })
+      setPreviewPos({ x: snapped.x - SIZES.rulerWidth, y: snapped.y })
     } else {
       setPreviewPos(null)
     }
@@ -442,16 +413,7 @@ export default function GridCanvas() {
         }
         return null
       })
-      setResizeStart(null)
-      setDragStart(null)
-      setRotationStart(null)
-      setCompassRadiusStart(null)
-      setCompassDragStart(null)
-      setCompassRotationStart(null)
-      setProtractorDragStart(null)
-      setProtractorRotationStart(null)
-      setProtractorRadiusStart(null)
-      setProtractorAngleStart(null)
+      setInteraction(null)
 
       // Finalize compass drawing if active
       if (compassDrawingMode) {
@@ -469,50 +431,49 @@ export default function GridCanvas() {
     }
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
-  }, [setRulerLength, setResizeLen, setResizeStart, setDragStart, setRotationStart, setCompassRadiusStart, setCompassDragStart, setCompassRotationStart, compassDrawingMode, setProtractorDragStart, setProtractorRotationStart, setProtractorRadiusStart, setProtractorAngleStart])
+  }, [setRulerLength, compassDrawingMode])
 
   useEffect(() => {
-    if (!resizeStart && !dragStart && !rotationStart && !compassRadiusStart && !compassDragStart && !compassRotationStart && !protractorDragStart && !protractorRotationStart && !protractorRadiusStart && !protractorAngleStart) return
+    if (!interaction) return
 
     const handleWindowMouseMove = (e: MouseEvent) => {
-      if (resizeStart) {
+      if (interaction.type === 'ruler-resize') {
         const theta = (rulerRotation * Math.PI) / 180
-        const deltaX = e.clientX - resizeStart.clientX
-        const deltaY = e.clientY - resizeStart.clientY
+        const deltaX = e.clientX - interaction.clientX
+        const deltaY = e.clientY - interaction.clientY
         const projectedDelta = deltaX * Math.cos(theta) + deltaY * Math.sin(theta)
-        const newLen = snapGrid(resizeStart.length + projectedDelta, gridSnapEnabled)
+        const newLen = snapGrid(interaction.length + projectedDelta, gridSnapEnabled)
         const clampedLen = Math.max(LIMITS.rulerMinLength, Math.min(LIMITS.rulerMaxLength, newLen))
 
-        let newRulerX = resizeStart.rulerX
-        const rightEdge = newRulerX + RULER + clampedLen
-        if (rightEdge > RULER + canvasWidth) {
-          newRulerX = RULER + canvasWidth - clampedLen - RULER
+        let newRulerX = interaction.objX
+        const rightEdge = newRulerX + SIZES.rulerWidth + clampedLen
+        if (rightEdge > SIZES.rulerWidth + canvasWidth) {
+          newRulerX = SIZES.rulerWidth + canvasWidth - clampedLen - SIZES.rulerWidth
         }
         newRulerX = Math.max(0, newRulerX)
 
-        if (isRulerInsideCanvas(newRulerX, rulerPos.y, clampedLen, rulerRotation, canvasWidth, canvasHeight)) {
+        if (isToolInsideCanvas(newRulerX, rulerPos.y, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           setResizeLen(clampedLen)
           useCanvasStore.getState().setRulerPos({ x: newRulerX, y: rulerPos.y })
         }
-      } else if (dragStart) {
-        const deltaX = e.clientX - dragStart.clientX
-        const deltaY = e.clientY - dragStart.clientY
+      } else if (interaction.type === 'ruler-drag') {
+        const deltaX = e.clientX - interaction.clientX
+        const deltaY = e.clientY - interaction.clientY
 
-        const newRulerX = snapGrid(dragStart.rulerX + deltaX, gridSnapEnabled)
-        const newRulerY = snapGrid(dragStart.rulerY + deltaY, gridSnapEnabled)
+        const newRulerX = snapGrid(interaction.objX + deltaX, gridSnapEnabled)
+        const newRulerY = snapGrid(interaction.objY + deltaY, gridSnapEnabled)
 
-        if (isRulerInsideCanvas(newRulerX, newRulerY, effectiveLen, rulerRotation, canvasWidth, canvasHeight)) {
+        if (isToolInsideCanvas(newRulerX, newRulerY, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setRulerPos({ x: newRulerX, y: newRulerY })
         }
-      } else if (rotationStart) {
-        const currentMouseAngle = Math.atan2(e.clientY - rotationStart.clientCenterY, e.clientX - rotationStart.clientCenterX)
-        const deltaAngleRad = currentMouseAngle - rotationStart.startMouseAngle
+      } else if (interaction.type === 'ruler-rotate') {
+        const currentMouseAngle = Math.atan2(e.clientY - interaction.clientCenterY, e.clientX - interaction.clientCenterX)
+        const deltaAngleRad = currentMouseAngle - interaction.startMouseAngle
         const deltaAngleDeg = deltaAngleRad * (180 / Math.PI)
 
-        let newRotation = (rotationStart.startRotation + deltaAngleDeg) % 360
+        let newRotation = (interaction.startRotation + deltaAngleDeg) % 360
         if (newRotation < 0) newRotation += 360
 
-        // Snap to common technical drawing angles (increments of 30 and 45 degrees) when within 0.2 degrees
         const snapThreshold = 0.2
         const commonAngles = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360]
         for (const target of commonAngles) {
@@ -523,35 +484,35 @@ export default function GridCanvas() {
         }
 
         newRotation = Math.round(newRotation * 10) / 10
-        if (isRulerInsideCanvas(rulerPos.x, rulerPos.y, effectiveLen, newRotation, canvasWidth, canvasHeight)) {
+        if (isToolInsideCanvas(rulerPos.x, rulerPos.y, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           setRulerRotation(newRotation)
         }
-      } else if (compassRadiusStart) {
-        const deltaX = compassRadiusStart.clientX - e.clientX
-        const newRadius = Math.max(LIMITS.compassMinRadius, compassRadiusStart.startRadius + deltaX)
-        if (isCompassInsideCanvas(compassPos.x, compassPos.y, newRadius, compassRotation, canvasWidth, canvasHeight)) {
+      } else if (interaction.type === 'compass-resize') {
+        const deltaX = interaction.clientX - e.clientX
+        const newRadius = Math.max(LIMITS.compassMinRadius, interaction.startRadius + deltaX)
+        if (isToolInsideCanvas(compassPos.x, compassPos.y, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setCompassLegLength(newRadius)
         }
-      } else if (compassDragStart) {
-        const deltaX = e.clientX - compassDragStart.clientX
-        const deltaY = e.clientY - compassDragStart.clientY
+      } else if (interaction.type === 'compass-drag') {
+        const deltaX = e.clientX - interaction.clientX
+        const deltaY = e.clientY - interaction.clientY
 
-        const newCompassX = snapGrid(compassDragStart.compassX + deltaX, gridSnapEnabled)
-        const newCompassY = snapGrid(compassDragStart.compassY + deltaY, gridSnapEnabled)
+        const newCompassX = snapGrid(interaction.objX + deltaX, gridSnapEnabled)
+        const newCompassY = snapGrid(interaction.objY + deltaY, gridSnapEnabled)
 
-        if (isCompassInsideCanvas(newCompassX, newCompassY, compassLegLength, compassRotation, canvasWidth, canvasHeight)) {
+        if (isToolInsideCanvas(newCompassX, newCompassY, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setCompassPos({ x: newCompassX, y: newCompassY })
         }
-      } else if (compassRotationStart) {
-        const currentMouseAngle = Math.atan2(e.clientY - compassRotationStart.clientCenterY, e.clientX - compassRotationStart.clientCenterX)
-        const deltaAngleRad = currentMouseAngle - compassRotationStart.startMouseAngle
+      } else if (interaction.type === 'compass-rotate') {
+        const currentMouseAngle = Math.atan2(e.clientY - interaction.clientCenterY, e.clientX - interaction.clientCenterX)
+        const deltaAngleRad = currentMouseAngle - interaction.startMouseAngle
         const deltaAngleDeg = deltaAngleRad * (180 / Math.PI)
 
-        let newRotation = (compassRotationStart.startRotation + deltaAngleDeg) % 360
+        let newRotation = (interaction.startRotation + deltaAngleDeg) % 360
         if (newRotation < 0) newRotation += 360
 
         newRotation = Math.round(newRotation)
-        if (isCompassInsideCanvas(compassPos.x, compassPos.y, compassLegLength, newRotation, canvasWidth, canvasHeight)) {
+        if (isToolInsideCanvas(compassPos.x, compassPos.y, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           const st = useCanvasStore.getState()
           if (compassDrawingMode) {
             const prevRot = st.compassRotation
@@ -564,7 +525,7 @@ export default function GridCanvas() {
             for (let i = 1; i <= steps; i++) {
               const ang = prevRot + (diff * i) / steps
               const rad = (ang * Math.PI) / 180
-              pts.push(compassPos.x + compassLegLength * Math.cos(rad) - RULER)
+              pts.push(compassPos.x + compassLegLength * Math.cos(rad) - SIZES.rulerWidth)
               pts.push(compassPos.y + compassLegLength * Math.sin(rad))
             }
             if (pts.length > 0) {
@@ -573,69 +534,65 @@ export default function GridCanvas() {
           }
           st.setCompassRotation(newRotation)
         }
-      } else if (protractorDragStart) {
-        const deltaX = e.clientX - protractorDragStart.clientX
-        const deltaY = e.clientY - protractorDragStart.clientY
+      } else if (interaction.type === 'protractor-drag') {
+        const deltaX = e.clientX - interaction.clientX
+        const deltaY = e.clientY - interaction.clientY
 
-        const newX = snapGrid(protractorDragStart.px + deltaX, gridSnapEnabled)
-        const newY = snapGrid(protractorDragStart.py + deltaY, gridSnapEnabled)
+        const newX = snapGrid(interaction.objX + deltaX, gridSnapEnabled)
+        const newY = snapGrid(interaction.objY + deltaY, gridSnapEnabled)
 
-        if (isProtractorInsideCanvas(newX, newY, protractorRadius, protractorRotation, canvasWidth, canvasHeight)) {
+        if (isToolInsideCanvas(newX, newY, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setProtractorPos({ x: newX, y: newY })
         }
-      } else if (protractorRotationStart) {
-        const currentMouseAngle = Math.atan2(e.clientY - protractorRotationStart.clientCenterY, e.clientX - protractorRotationStart.clientCenterX)
-        const deltaAngleRad = currentMouseAngle - protractorRotationStart.startMouseAngle
+      } else if (interaction.type === 'protractor-rotate') {
+        const currentMouseAngle = Math.atan2(e.clientY - interaction.clientCenterY, e.clientX - interaction.clientCenterX)
+        const deltaAngleRad = currentMouseAngle - interaction.startMouseAngle
         const deltaAngleDeg = deltaAngleRad * (180 / Math.PI)
 
-        let newRotation = (protractorRotationStart.startRotation + deltaAngleDeg) % 360
+        let newRotation = (interaction.startRotation + deltaAngleDeg) % 360
         if (newRotation < 0) newRotation += 360
 
         newRotation = Math.round(newRotation)
-        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, protractorRadius, newRotation, canvasWidth, canvasHeight)) {
+        if (isToolInsideCanvas(protractorPos.x, protractorPos.y, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           setProtractorRotation(newRotation)
         }
-      } else if (protractorRadiusStart) {
-        const deltaX = protractorRadiusStart.clientX - e.clientX
-        const newRadius = Math.max(LIMITS.protractorMinRadius, protractorRadiusStart.startRadius + deltaX)
-        if (isProtractorInsideCanvas(protractorPos.x, protractorPos.y, newRadius, protractorRotation, canvasWidth, canvasHeight)) {
+      } else if (interaction.type === 'protractor-resize') {
+        const deltaX = interaction.clientX - e.clientX
+        const newRadius = Math.max(LIMITS.protractorMinRadius, interaction.startRadius + deltaX)
+        if (isToolInsideCanvas(protractorPos.x, protractorPos.y, SIZES.rulerWidth, canvasWidth, canvasHeight)) {
           useCanvasStore.getState().setProtractorRadius(newRadius)
         }
-      } else if (protractorAngleStart) {
-        let mouseAngleRad = Math.atan2(e.clientY - protractorAngleStart.clientCenterY, e.clientX - protractorAngleStart.clientCenterX)
+      } else if (interaction.type === 'protractor-angle') {
+        let mouseAngleRad = Math.atan2(e.clientY - interaction.clientCenterY, e.clientX - interaction.clientCenterX)
         let mouseAngleDeg = mouseAngleRad * (180 / Math.PI)
 
-        // Normalize mouse angle to local coordinate system of the protractor
         let mouseAngleLocal = (mouseAngleDeg - protractorRotation) % 360
         if (mouseAngleLocal < 0) mouseAngleLocal += 360
 
         let localAngle: number
         if (mouseAngleLocal >= 180 && mouseAngleLocal <= 360) {
-          // Upper half: Map 180 -> 0 (left) and 360 -> 180 (right)
           localAngle = mouseAngleLocal - 180
         } else {
-          // Lower half: Clamp to nearest edge to prevent jumps
           if (mouseAngleLocal < 90) {
-            localAngle = 180 // Clamp to right edge
+            localAngle = 180 
           } else {
-            localAngle = 0   // Clamp to left edge
+            localAngle = 0   
           }
         }
-
         useCanvasStore.getState().setProtractorAngle(Math.round(localAngle))
       }
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
     return () => window.removeEventListener('mousemove', handleWindowMouseMove)
-  }, [resizeStart, dragStart, rotationStart, compassRadiusStart, compassDragStart, compassRotationStart, protractorDragStart, protractorRotationStart, protractorRadiusStart, protractorAngleStart, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, protractorPos.x, protractorPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassDrawingMode, protractorRadius, protractorRotation, setProtractorRotation, canvasWidth, canvasHeight])
+  }, [interaction, rulerPos.x, rulerPos.y, compassPos.x, compassPos.y, protractorPos.x, protractorPos.y, effectiveLen, rulerRotation, setRulerRotation, compassRotation, compassLegLength, compassDrawingMode, protractorRadius, protractorRotation, setProtractorRotation, canvasWidth, canvasHeight])
 
   const previewLine =
-    tool === 'polyline' && currentPoints.length >= 2 && previewPos && !resizeStart && !dragStart && !rotationStart
+    tool === 'polyline' && currentPoints.length >= 2 && previewPos && !interaction
       ? [
-          currentPoints[currentPoints.length - 2] + RULER,
+          currentPoints[currentPoints.length - 2] + SIZES.rulerWidth,
           currentPoints[currentPoints.length - 1],
-          previewPos.x + RULER,
+          previewPos.x + SIZES.rulerWidth,
           previewPos.y,
         ]
       : null
@@ -654,28 +611,28 @@ export default function GridCanvas() {
     >
       {!isExporting && (
         <Layer>
-          <Rect x={0} y={0} width={RULER} height={canvasHeight} fill="#f0f0f0" listening={false} />
-          <Rect x={RULER} y={canvasHeight} width={canvasWidth} height={RULER} fill="#f0f0f0" listening={false} />
+          <Rect x={0} y={0} width={SIZES.rulerWidth} height={canvasHeight} fill="#f0f0f0" listening={false} />
+          <Rect x={SIZES.rulerWidth} y={canvasHeight} width={canvasWidth} height={SIZES.rulerWidth} fill="#f0f0f0" listening={false} />
         </Layer>
       )}
 
-      <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
-        <Rect x={RULER} y={0} width={canvasWidth} height={canvasHeight} fill="white" listening={false} />
+      <Layer clip={{ x: SIZES.rulerWidth, y: 0, width: canvasWidth, height: canvasHeight }}>
+        <Rect x={SIZES.rulerWidth} y={0} width={canvasWidth} height={canvasHeight} fill="white" listening={false} />
         {!isExporting && gridLines.minor.map((p, i) => (
-          <Line key={`mi-${i}`} points={p} stroke="#e8e8e8" strokeWidth={0.5} listening={false} />
+          <Line key={`mi-${i}`} points={p} stroke={COLORS.gridMinor} strokeWidth={0.5} listening={false} />
         ))}
         {!isExporting && gridLines.major.map((p, i) => (
-          <Line key={`ma-${i}`} points={p} stroke="#b0b0b0" strokeWidth={1.5} listening={false} />
+          <Line key={`ma-${i}`} points={p} stroke={COLORS.gridMajor} strokeWidth={1.5} listening={false} />
         ))}
       </Layer>
 
       {!isExporting && <Layer>{axisRulers}</Layer>}
 
-      <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
+      <Layer clip={{ x: SIZES.rulerWidth, y: 0, width: canvasWidth, height: canvasHeight }}>
         {paths.map((path, i) => (
           <Line
             key={`p-${i}`}
-            points={path.points.reduce<number[]>((a, v, j) => (a.push(j % 2 === 0 ? v + RULER : v), a), [])}
+            points={path.points.reduce<number[]>((a, v, j) => (a.push(j % 2 === 0 ? v + SIZES.rulerWidth : v), a), [])}
             stroke={path.color}
             strokeWidth={path.strokeWidth}
             lineCap="round"
@@ -685,7 +642,7 @@ export default function GridCanvas() {
         ))}
         {!isExporting && currentPoints.length >= 2 && (
           <Line
-            points={currentPoints.reduce<number[]>((a, v, i) => (a.push(i % 2 === 0 ? v + RULER : v), a), [])}
+            points={currentPoints.reduce<number[]>((a, v, i) => (a.push(i % 2 === 0 ? v + SIZES.rulerWidth : v), a), [])}
             stroke="#2563eb"
             strokeWidth={1.5}
             lineCap="round"
@@ -696,11 +653,11 @@ export default function GridCanvas() {
         {!isExporting && previewLine && (
           <Line points={previewLine} stroke="#2563eb" strokeWidth={1.5} dash={[6, 4]} listening={false} />
         )}
-        {!isExporting && (tool === 'polyline' || tool === 'freehand') && previewPos && !resizeStart && !dragStart && !rotationStart && (
-          <Circle x={previewPos.x + RULER} y={previewPos.y} radius={3} fill="#2563eb" opacity={0.6} listening={false} />
+        {!isExporting && (tool === 'polyline' || tool === 'freehand') && previewPos && !interaction && (
+          <Circle x={previewPos.x + SIZES.rulerWidth} y={previewPos.y} radius={3} fill="#2563eb" opacity={0.6} listening={false} />
         )}
-        {!isExporting && tool === 'point' && previewPos && !resizeStart && !dragStart && !rotationStart && (
-          <Group x={previewPos.x + RULER} y={previewPos.y} opacity={0.6} listening={false}>
+        {!isExporting && tool === 'point' && previewPos && !interaction && (
+          <Group x={previewPos.x + SIZES.rulerWidth} y={previewPos.y} opacity={0.6} listening={false}>
             <Line points={[-SIZES.crossMarkSize, 0, SIZES.crossMarkSize, 0]} stroke="#2563eb" strokeWidth={1.5} />
             <Line points={[0, -SIZES.crossMarkSize, 0, SIZES.crossMarkSize]} stroke="#2563eb" strokeWidth={1.5} />
           </Group>
@@ -710,7 +667,7 @@ export default function GridCanvas() {
         {!isExporting && gridSnapEnabled && intersections.map((pt, i) => (
           <Circle
             key={`int-${i}`}
-            x={pt.x + RULER}
+            x={pt.x + SIZES.rulerWidth}
             y={pt.y}
             radius={2}
             fill="#3b82f6"
@@ -725,18 +682,18 @@ export default function GridCanvas() {
         {(() => {
           if (isExporting) return null
           if (freehand.current && currentPoints.length >= 2) {
-            const x = currentPoints[currentPoints.length - 2] + RULER
+            const x = currentPoints[currentPoints.length - 2] + SIZES.rulerWidth
             const y = currentPoints[currentPoints.length - 1]
             const len = calculatePathLength(currentPoints) / 100
             return (
               <Group x={x + 12} y={y - 12} listening={false}>
-                <Rect width={60} height={18} fill="rgba(0,0,0,0.6)" cornerRadius={3} />
+                <Rect width={60} height={18} fill={COLORS.tooltipBg} cornerRadius={3} />
                 <Text text={`${len.toFixed(1)} cm`} fill="white" fontSize={10} fontFamily="monospace" x={6} y={4} />
               </Group>
             )
           }
           if (tool === 'polyline' && currentPoints.length >= 2 && previewPos) {
-            const x = previewPos.x + RULER
+            const x = previewPos.x + SIZES.rulerWidth
             const y = previewPos.y
             const accumLen = calculatePathLength(currentPoints) / 100
             const segmentLen = getDistance(
@@ -749,7 +706,7 @@ export default function GridCanvas() {
             const txt = `Seg: ${segmentLen.toFixed(1)} cm\nTotal: ${totalLen.toFixed(1)} cm`
             return (
               <Group x={x + 12} y={y - 28} listening={false}>
-                <Rect width={100} height={30} fill="rgba(0,0,0,0.6)" cornerRadius={3} />
+                <Rect width={100} height={30} fill={COLORS.tooltipBg} cornerRadius={3} />
                 <Text text={txt} fill="white" fontSize={9} fontFamily="monospace" x={6} y={4} />
               </Group>
             )
@@ -759,26 +716,26 @@ export default function GridCanvas() {
       </Layer>
 
       {rulerVisible && !isExporting && (
-        <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
+        <Layer clip={{ x: SIZES.rulerWidth, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             ref={rulerGroupRef}
-            x={rulerPos.x + RULER}
+            x={rulerPos.x + SIZES.rulerWidth}
             y={rulerPos.y}
             rotation={rulerRotation}
           >
-            <Rect width={effectiveLen} height={RULER_H} fill="#ffd700" opacity={0.25} stroke={COLORS.handleStrokeIdle} strokeWidth={1} cornerRadius={2} listening={false} />
+            <Rect width={effectiveLen} height={SIZES.rulerHeight} fill={COLORS.rulerGold} opacity={0.25} stroke={COLORS.handleStrokeIdle} strokeWidth={1} cornerRadius={2} listening={false} />
             {rulerContent.ticks}
             {rulerContent.labels}
 
             {/* Total ruler length display */}
             <Text
               x={effectiveLen / 2}
-              y={RULER_H - 9}
+              y={SIZES.rulerHeight - 9}
               text={`${(effectiveLen / 100).toFixed(1)} cm`}
               fontSize={10}
               fontStyle="bold"
               fontFamily="monospace"
-              fill="#8a720c"
+              fill={COLORS.rulerTextGold}
               align="center"
               offsetX={40} // half of custom width 80
               rotation={-rulerRotation}
@@ -788,23 +745,18 @@ export default function GridCanvas() {
             {/* Central move handle */}
             <InteractiveHandle
               x={effectiveLen / 2}
-              y={RULER_H / 2}
+              y={SIZES.rulerHeight / 2}
               cursorType="move"
               radius={SIZES.handleRadiusSmall}
               onMouseDown={(e) => {
-                setDragStart({
-                  clientX: e.evt.clientX,
-                  clientY: e.evt.clientY,
-                  rulerX: rulerPos.x,
-                  rulerY: rulerPos.y,
-                })
+                setInteraction({ type: 'ruler-drag', clientX: e.evt.clientX, clientY: e.evt.clientY, objX: rulerPos.x, objY: rulerPos.y })
               }}
             />
 
             {/* Connecting line for rotation handle */}
             <Line
-              points={[effectiveLen / 2, RULER_H / 2, effectiveLen / 2, -15]}
-              stroke="#b8960f"
+              points={[effectiveLen / 2, SIZES.rulerHeight / 2, effectiveLen / 2, -15]}
+              stroke={COLORS.rulerLineGold}
               strokeWidth={1}
               dash={[2, 2]}
             />
@@ -817,12 +769,7 @@ export default function GridCanvas() {
               radius={SIZES.handleRadiusSmall}
               onMouseDown={(e) => {
                 const stage = e.target.getStage()
-                setRotationStart({
-                  startMouseAngle: getMouseAngleRelativeTo(e, { x: rulerPos.x + RULER, y: rulerPos.y }, stage),
-                  startRotation: rulerRotation,
-                  clientCenterX: stage?.container().getBoundingClientRect().left! + rulerPos.x + RULER,
-                  clientCenterY: stage?.container().getBoundingClientRect().top! + rulerPos.y,
-                })
+                setInteraction({ type: 'ruler-rotate', startMouseAngle: getMouseAngleRelativeTo(e, { x: rulerPos.x + SIZES.rulerWidth, y: rulerPos.y }, stage), startRotation: rulerRotation, clientCenterX: stage?.container().getBoundingClientRect().left! + rulerPos.x + SIZES.rulerWidth, clientCenterY: stage?.container().getBoundingClientRect().top! + rulerPos.y })
               }}
             />
 
@@ -833,7 +780,7 @@ export default function GridCanvas() {
               text={`${rulerRotation}°`}
               fontSize={10}
               fontFamily="monospace"
-              fill="#8a720c"
+              fill={COLORS.rulerTextGold}
               align="center"
               offsetX={20}
               rotation={-rulerRotation}
@@ -842,16 +789,11 @@ export default function GridCanvas() {
             {/* Right resize handle */}
             <InteractiveHandle
               x={effectiveLen}
-              y={RULER_H / 2}
+              y={SIZES.rulerHeight / 2}
               cursorType="ew-resize"
               radius={SIZES.handleRadiusSmall}
               onMouseDown={(e) => {
-                setResizeStart({
-                  clientX: e.evt.clientX,
-                  clientY: e.evt.clientY,
-                  length: rulerLength,
-                  rulerX: rulerPos.x,
-                })
+                setInteraction({ type: 'ruler-resize', clientX: e.evt.clientX, clientY: e.evt.clientY, length: rulerLength, objX: rulerPos.x })
                 setResizeLen(rulerLength)
               }}
             />
@@ -859,7 +801,7 @@ export default function GridCanvas() {
         </Layer>
       )}
       {compassVisible && !isExporting && (
-        <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
+        <Layer clip={{ x: SIZES.rulerWidth, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             x={compassPos.x}
             y={compassPos.y}
@@ -867,7 +809,7 @@ export default function GridCanvas() {
             {/* Left leg (fixed radius indicator) */}
             <Line
               points={[0, 0, -compassLegLength, 0]}
-              stroke="#555"
+              stroke={COLORS.mediumGray}
               strokeWidth={3}
               lineCap="round"
               listening={false}
@@ -880,7 +822,7 @@ export default function GridCanvas() {
               text={`${(compassLegLength / 100).toFixed(1)} cm`}
               fontSize={10}
               fontFamily="monospace"
-              fill="#555"
+              fill={COLORS.mediumGray}
               align="center"
               listening={false}
             />
@@ -893,7 +835,7 @@ export default function GridCanvas() {
                 compassLegLength * Math.cos((compassRotation * Math.PI) / 180),
                 compassLegLength * Math.sin((compassRotation * Math.PI) / 180),
               ]}
-              stroke="#555"
+              stroke={COLORS.mediumGray}
               strokeWidth={3}
               lineCap="round"
               listening={false}
@@ -906,11 +848,7 @@ export default function GridCanvas() {
               cursorType="ew-resize"
               radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
-                setCompassRadiusStart({
-                  clientX: e.evt.clientX,
-                  startRadius: compassLegLength,
-                  compassX: compassPos.x,
-                })
+                setInteraction({ type: 'compass-resize', clientX: e.evt.clientX, startRadius: compassLegLength, objX: compassPos.x })
               }}
             />
 
@@ -925,12 +863,7 @@ export default function GridCanvas() {
                 useCanvasStore.getState().setCompassDrawingMode(!compassDrawingMode)
               }}
               onMouseDown={(e) => {
-                setCompassDragStart({
-                  clientX: e.evt.clientX,
-                  clientY: e.evt.clientY,
-                  compassX: compassPos.x,
-                  compassY: compassPos.y,
-                })
+                setInteraction({ type: 'compass-drag', clientX: e.evt.clientX, clientY: e.evt.clientY, objX: compassPos.x, objY: compassPos.y })
               }}
             />
 
@@ -948,24 +881,19 @@ export default function GridCanvas() {
                 
                 if (compassDrawingMode) {
                   useCanvasStore.getState().addPointToCurrent([
-                    compassPos.x + compassLegLength * Math.cos(degToRad(compassRotation)) - RULER,
+                    compassPos.x + compassLegLength * Math.cos(degToRad(compassRotation)) - SIZES.rulerWidth,
                     compassPos.y + compassLegLength * Math.sin(degToRad(compassRotation))
                   ])
                 }
 
-                setCompassRotationStart({
-                  startMouseAngle: currentMouseAngle,
-                  startRotation: compassRotation,
-                  clientCenterX,
-                  clientCenterY,
-                })
+                setInteraction({ type: 'compass-rotate', startMouseAngle: currentMouseAngle, startRotation: compassRotation, clientCenterX, clientCenterY })
               }}
             />
           </Group>
         </Layer>
       )}
       {protractorVisible && !isExporting && (
-        <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
+        <Layer clip={{ x: SIZES.rulerWidth, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             x={protractorPos.x}
             y={protractorPos.y}
@@ -978,7 +906,7 @@ export default function GridCanvas() {
               angle={180}
               rotation={180}
               fill="rgba(255, 255, 255, 0.4)"
-              stroke="#555"
+              stroke={COLORS.mediumGray}
               strokeWidth={1}
               listening={false}
             />
@@ -986,15 +914,15 @@ export default function GridCanvas() {
             {/* Baseline Bar */}
             <Line
               points={[-protractorRadius, 0, protractorRadius, 0]}
-              stroke="#333"
+              stroke={COLORS.darkGray}
               strokeWidth={2}
               listening={false}
             />
 
             {/* Center crosshair */}
-            <Line points={[-8, 0, 8, 0]} stroke="#333" strokeWidth={0.8} listening={false} />
-            <Line points={[0, -8, 0, 8]} stroke="#333" strokeWidth={0.8} listening={false} />
-            <Circle radius={2} fill="#333" listening={false} />
+            <Line points={[-8, 0, 8, 0]} stroke={COLORS.darkGray} strokeWidth={0.8} listening={false} />
+            <Line points={[0, -8, 0, 8]} stroke={COLORS.darkGray} strokeWidth={0.8} listening={false} />
+            <Circle radius={2} fill={COLORS.darkGray} listening={false} />
 
             {/* Graduation Ticks & Labels */}
             {(() => {
@@ -1017,7 +945,7 @@ export default function GridCanvas() {
                       (protractorRadius - len) * cos,
                       (protractorRadius - len) * sin,
                     ]}
-                    stroke="#333"
+                    stroke={COLORS.darkGray}
                     strokeWidth={isMajor ? 1 : 0.5}
                   />
                 )
@@ -1058,7 +986,7 @@ export default function GridCanvas() {
                 <Group>
                   <Line
                     points={[0, 0, tx, ty]}
-                    stroke="#22c55e"
+                    stroke={COLORS.protractorGreen}
                     strokeWidth={1.5}
                     dash={[4, 2]}
                   />
@@ -1068,7 +996,7 @@ export default function GridCanvas() {
                     text={`${protractorAngle}°`}
                     fontSize={11}
                     fontStyle="bold"
-                    fill="#15803d"
+                    fill={COLORS.protractorDarkGreen}
                     fontFamily="monospace"
                     backgroundColor="white"
                     offsetX={12} // Center it
@@ -1087,7 +1015,7 @@ export default function GridCanvas() {
               text={`R: ${(protractorRadius / 100).toFixed(1)} cm`}
               fontSize={9}
               fontFamily="monospace"
-              fill="#555"
+              fill={COLORS.mediumGray}
               align="right"
               listening={false}
             />
@@ -1097,10 +1025,7 @@ export default function GridCanvas() {
               cursorType="ew-resize"
               radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
-                setProtractorRadiusStart({
-                  clientX: e.evt.clientX,
-                  startRadius: protractorRadius,
-                })
+                setInteraction({ type: 'protractor-resize', clientX: e.evt.clientX, startRadius: protractorRadius })
               }}
             />
 
@@ -1111,12 +1036,7 @@ export default function GridCanvas() {
               cursorType="move"
               radius={SIZES.handleRadiusCenter}
               onMouseDown={(e) => {
-                setProtractorDragStart({
-                  clientX: e.evt.clientX,
-                  clientY: e.evt.clientY,
-                  px: protractorPos.x,
-                  py: protractorPos.y,
-                })
+                setInteraction({ type: 'protractor-drag', clientX: e.evt.clientX, clientY: e.evt.clientY, objX: protractorPos.x, objY: protractorPos.y })
               }}
             />
 
@@ -1128,12 +1048,7 @@ export default function GridCanvas() {
               radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
                 const stage = e.target.getStage()
-                setProtractorRotationStart({
-                  startMouseAngle: getMouseAngleRelativeTo(e, protractorPos, stage),
-                  startRotation: protractorRotation,
-                  clientCenterX: stage?.container().getBoundingClientRect().left! + protractorPos.x,
-                  clientCenterY: stage?.container().getBoundingClientRect().top! + protractorPos.y,
-                })
+                setInteraction({ type: 'protractor-rotate', startMouseAngle: getMouseAngleRelativeTo(e, protractorPos, stage), startRotation: protractorRotation, clientCenterX: stage?.container().getBoundingClientRect().left! + protractorPos.x, clientCenterY: stage?.container().getBoundingClientRect().top! + protractorPos.y })
               }}
             />
 
@@ -1148,14 +1063,14 @@ export default function GridCanvas() {
                   y={hy}
                   cursorType="rotate"
                   radius={SIZES.handleRadiusStandard}
-                  fill="#22c55e"
-                  stroke="#15803d"
+                  fill={COLORS.protractorGreen}
+                  stroke={COLORS.protractorDarkGreen}
                   onDblClick={() => {
                     const rotRad = degToRad(protractorRotation)
                     const px = protractorPos.x + hx * Math.cos(rotRad) - hy * Math.sin(rotRad)
                     const py = protractorPos.y + hx * Math.sin(rotRad) + hy * Math.cos(rotRad)
                     
-                    const mx = px - RULER
+                    const mx = px - SIZES.rulerWidth
                     const my = py
                     const size = SIZES.crossMarkSize
                     
@@ -1173,11 +1088,7 @@ export default function GridCanvas() {
                   }}
                   onMouseDown={(e) => {
                     const stage = e.target.getStage()
-                    setProtractorAngleStart({
-                      startAngle: protractorAngle,
-                      clientCenterX: stage?.container().getBoundingClientRect().left! + protractorPos.x,
-                      clientCenterY: stage?.container().getBoundingClientRect().top! + protractorPos.y,
-                    })
+                    setInteraction({ type: 'protractor-angle', startAngle: protractorAngle, clientCenterX: stage?.container().getBoundingClientRect().left! + protractorPos.x, clientCenterY: stage?.container().getBoundingClientRect().top! + protractorPos.y })
                   }}
                 />
               )

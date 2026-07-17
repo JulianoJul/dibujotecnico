@@ -20,6 +20,18 @@ export const COLORS = {
   handleRotateStroke: '#b91c1c',
   
   protractorGlass: 'rgba(255, 255, 255, 0.4)',
+  protractorGreen: '#22c55e',
+  protractorDarkGreen: '#15803d',
+  
+  gridMinor: '#e8e8e8',
+  gridMajor: '#b0b0b0',
+  gridAxis: '#555',
+  
+  tooltipBg: 'rgba(0,0,0,0.6)',
+  
+  rulerGold: '#ffd700',
+  rulerTextGold: '#8a720c',
+  rulerLineGold: '#b8960f',
 }
 
 export const SIZES = {
@@ -32,6 +44,12 @@ export const SIZES = {
   strokeThick: 2,
   strokeHeavy: 3,
   crossMarkSize: 5,
+  
+  rulerWidth: 30,
+  rulerHeight: 40,
+  grid: 10,
+  snapRadiusMagnetic: 15,
+  snapRadiusIntersection: 8,
 }
 
 export const LIMITS = {

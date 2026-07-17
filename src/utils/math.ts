@@ -30,6 +30,16 @@ export const isPointInsideCanvas = (
   return x >= rulerOffset - eps && x <= rulerOffset + canvasWidth + eps && y >= -eps && y <= canvasHeight + eps
 }
 
+export const isToolInsideCanvas = (
+  x: number,
+  y: number,
+  rulerOffset: number,
+  canvasWidth: number,
+  canvasHeight: number
+) => {
+  return isPointInsideCanvas(x, y, rulerOffset, canvasWidth, canvasHeight)
+}
+
 export const projectPointToSegment = (
   px: number, py: number,
   ax: number, ay: number,
@@ -70,6 +80,16 @@ export const calculatePathLength = (points: number[]): number => {
     len += getDistance(points[i - 2], points[i - 1], points[i], points[i + 1])
   }
   return len
+}
+
+export const createCrossMarkPath = (x: number, y: number, size: number): number[] => {
+  return [
+    x - size, y,
+    x + size, y,
+    x, y,
+    x, y - size,
+    x, y + size
+  ]
 }
 
 export interface Point2D {
