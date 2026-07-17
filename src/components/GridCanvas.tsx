@@ -736,7 +736,7 @@ export default function GridCanvas() {
             y={rulerPos.y}
             rotation={rulerRotation}
           >
-            <Rect width={effectiveLen} height={RULER_H} fill="#ffd700" opacity={0.25} stroke={COLORS.handleStrokeIdle} strokeWidth={1} cornerRadius={2} />
+            <Rect width={effectiveLen} height={RULER_H} fill="#ffd700" opacity={0.25} stroke={COLORS.handleStrokeIdle} strokeWidth={1} cornerRadius={2} listening={false} />
             {rulerContent.ticks}
             {rulerContent.labels}
 
@@ -838,6 +838,7 @@ export default function GridCanvas() {
               stroke="#555"
               strokeWidth={3}
               lineCap="round"
+              listening={false}
             />
             {/* Radius measurement on left leg */}
             <Text
@@ -863,6 +864,7 @@ export default function GridCanvas() {
               stroke="#555"
               strokeWidth={3}
               lineCap="round"
+              listening={false}
             />
 
             {/* Left Handle (Radius resizing) */}
@@ -946,6 +948,7 @@ export default function GridCanvas() {
               fill="rgba(255, 255, 255, 0.4)"
               stroke="#555"
               strokeWidth={1}
+              listening={false}
             />
             
             {/* Baseline Bar */}
@@ -953,12 +956,13 @@ export default function GridCanvas() {
               points={[-protractorRadius, 0, protractorRadius, 0]}
               stroke="#333"
               strokeWidth={2}
+              listening={false}
             />
 
             {/* Center crosshair */}
-            <Line points={[-8, 0, 8, 0]} stroke="#333" strokeWidth={0.8} />
-            <Line points={[0, -8, 0, 8]} stroke="#333" strokeWidth={0.8} />
-            <Circle radius={2} fill="#333" />
+            <Line points={[-8, 0, 8, 0]} stroke="#333" strokeWidth={0.8} listening={false} />
+            <Line points={[0, -8, 0, 8]} stroke="#333" strokeWidth={0.8} listening={false} />
+            <Circle radius={2} fill="#333" listening={false} />
 
             {/* Graduation Ticks & Labels */}
             {(() => {
