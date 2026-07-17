@@ -284,9 +284,10 @@ export default function GridCanvas() {
     const ticks: React.ReactNode[] = []
     const labels: React.ReactNode[] = []
     
-    // Flip text by 180 degrees if the ruler is rotated to the left hemisphere
-    const shouldFlip = rulerRotation > 90 && rulerRotation <= 270
-    const textRotation = shouldFlip ? 180 : 0
+    // During active rotation, keep text aligned with ruler (local rotation = 0)
+    // On release, make text perfectly horizontal (local rotation = -rulerRotation)
+    const isRotating = rotationStart !== null
+    const textRotation = isRotating ? 0 : -rulerRotation
 
     for (let x = 0; x <= effectiveLen; x += GRID) {
       const cm = x % 100 === 0
@@ -313,7 +314,7 @@ export default function GridCanvas() {
       )
     }
     return { ticks, labels }
-  }, [effectiveLen, rulerRotation])
+  }, [effectiveLen, rulerRotation, rotationStart])
 
   const finalizePoly = useCallback(() => {
     const st = useCanvasStore.getState()
@@ -783,7 +784,7 @@ export default function GridCanvas() {
               align="center"
               offsetX={40} // half of custom width 80
               offsetY={5}
-              rotation={rulerRotation > 90 && rulerRotation <= 270 ? 180 : 0}
+              rotation={rotationStart !== null ? 0 : -rulerRotation}
               listening={false}
             />
 
@@ -839,7 +840,7 @@ export default function GridCanvas() {
               align="center"
               offsetX={20}
               offsetY={5}
-              rotation={rulerRotation > 90 && rulerRotation <= 270 ? 180 : 0}
+              rotation={rotationStart !== null ? 0 : -rulerRotation}
             />
 
             {/* Right resize handle */}
