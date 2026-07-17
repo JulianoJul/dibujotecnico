@@ -135,11 +135,11 @@ export const findAllIntersections = (
       const seg1 = segments[i]
       const seg2 = segments[j]
       
-      // Ignore segments from the same path if they are adjacent or very close in the stroke order
+      // Completely ignore self-intersections within the same path.
+      // This prevents thousands of false-positive intersections when a compass or freehand
+      // trace doubles back on itself due to floating point curve approximation.
       if (seg1.pathId === seg2.pathId) {
-        if (Math.abs(seg1.segIdx - seg2.segIdx) < 5) {
-          continue
-        }
+        continue
       }
 
       const pt = getSegmentIntersection(
