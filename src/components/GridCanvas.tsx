@@ -492,10 +492,10 @@ export default function GridCanvas() {
         let newRotation = (rotationStart.startRotation + deltaAngleDeg) % 360
         if (newRotation < 0) newRotation += 360
 
-        // Snap to cardinal angles (0, 90, 180, 270) when within 0.2 degrees
+        // Snap to common technical drawing angles (increments of 30 and 45 degrees) when within 0.2 degrees
         const snapThreshold = 0.2
-        const cardinalAngles = [0, 90, 180, 270, 360]
-        for (const target of cardinalAngles) {
+        const commonAngles = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360]
+        for (const target of commonAngles) {
           if (Math.abs(newRotation - target) < snapThreshold) {
             newRotation = target % 360
             break
