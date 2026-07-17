@@ -12,8 +12,8 @@ export const COLORS = {
   handleFillActive: '#3b82f6',
   handleFillMove: '#555',
   
-  handleMoveFill: '#f97316',      // Orange
-  handleMoveStroke: '#c2410c',
+  handleMoveFill: '#b8960f',      // Gold/Ochre (the original golden-orange)
+  handleMoveStroke: '#8a720c',
   handleResizeFill: '#3b82f6',    // Blue
   handleResizeStroke: '#1d4ed8',
   handleRotateFill: '#ef4444',    // Red
