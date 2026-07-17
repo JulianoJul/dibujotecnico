@@ -304,6 +304,7 @@ export default function GridCanvas() {
 
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (e.evt.button !== 0) return
+    if (e.target && e.target.name() === 'handle') return
     const st = useCanvasStore.getState()
     if (st.tool !== 'freehand') return
 
@@ -319,6 +320,7 @@ export default function GridCanvas() {
 
   const handleClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (e.evt.button !== 0) return
+    if (e.target && e.target.name() === 'handle') return
     const st = useCanvasStore.getState()
     
     const pos = e.target.getStage()?.getPointerPosition()
@@ -775,7 +777,7 @@ export default function GridCanvas() {
             <InteractiveHandle
               x={effectiveLen / 2}
               y={-15}
-              cursorType="pointer"
+              cursorType="rotate"
               radius={SIZES.handleRadiusSmall}
               onMouseDown={(e) => {
                 const stage = e.target.getStage()
@@ -897,7 +899,7 @@ export default function GridCanvas() {
             <InteractiveHandle
               x={compassLegLength * Math.cos((compassRotation * Math.PI) / 180)}
               y={compassLegLength * Math.sin((compassRotation * Math.PI) / 180)}
-              cursorType="pointer"
+              cursorType="rotate"
               radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
                 const stage = e.target.getStage()
@@ -1074,7 +1076,7 @@ export default function GridCanvas() {
             <InteractiveHandle
               x={protractorRadius}
               y={0}
-              cursorType="pointer"
+              cursorType="rotate"
               radius={SIZES.handleRadiusStandard}
               onMouseDown={(e) => {
                 const stage = e.target.getStage()
@@ -1096,7 +1098,7 @@ export default function GridCanvas() {
                 <InteractiveHandle
                   x={hx}
                   y={hy}
-                  cursorType="pointer"
+                  cursorType="rotate"
                   radius={SIZES.handleRadiusStandard}
                   fill="#22c55e"
                   stroke="#15803d"

@@ -7,7 +7,7 @@ interface InteractiveHandleProps {
   x: number
   y: number
   radius?: number
-  cursorType?: 'pointer' | 'move' | 'ew-resize' | 'ns-resize' | 'text' | 'default'
+  cursorType?: 'pointer' | 'move' | 'ew-resize' | 'ns-resize' | 'text' | 'default' | 'rotate'
   isActive?: boolean
   fill?: string
   stroke?: string
@@ -39,7 +39,13 @@ export default function InteractiveHandle({
   
   const handleMouseEnter = (e: KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage()
-    if (stage) stage.container().style.cursor = cursorType
+    if (stage) {
+      if (cursorType === 'rotate') {
+        stage.container().style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'18\' height=\'18\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23000000\' stroke-width=\'3\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'M21.5 2v6h-6\'/%3E%3Cpath d=\'M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67\'/%3E%3C/svg%3E") 9 9, auto'
+      } else {
+        stage.container().style.cursor = cursorType
+      }
+    }
   }
 
   const handleMouseLeave = (e: KonvaEventObject<MouseEvent>) => {
@@ -80,6 +86,9 @@ export default function InteractiveHandle({
   } else if (cursorType === 'ew-resize') {
     defaultFill = COLORS.handleResizeFill
     defaultStroke = COLORS.handleResizeStroke
+  } else if (cursorType === 'rotate') {
+    defaultFill = COLORS.handleRotateFill
+    defaultStroke = COLORS.handleRotateStroke
   } else if (cursorType === 'pointer') {
     defaultFill = COLORS.handleRotateFill
     defaultStroke = COLORS.handleRotateStroke
@@ -97,6 +106,7 @@ export default function InteractiveHandle({
     >
       {isPolygon ? (
         <RegularPolygon
+          name="handle"
           sides={sides}
           radius={radius}
           rotation={rotation}
@@ -106,6 +116,7 @@ export default function InteractiveHandle({
         />
       ) : (
         <Circle
+          name="handle"
           radius={radius}
           fill={fill || defaultFill}
           stroke={stroke || defaultStroke}
