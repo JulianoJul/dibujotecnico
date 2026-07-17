@@ -273,19 +273,35 @@ export default function GridCanvas() {
       const txtW = l.length * 6
       const txtH = 9
       labels.push(
-        <Text
-          key={`dl-${i}`}
+        <Group
+          key={`dl-grp-${i}`}
           x={i * 100}
           y={8}
-          text={l}
-          fontSize={9}
-          fill={COLORS.darkGray}
-          fontFamily="monospace"
-          offsetX={txtW / 2}
-          offsetY={txtH / 2}
           rotation={textRotation}
-          listening={false}
-        />
+        >
+          <Rect
+            x={-txtW / 2 - 2}
+            y={-txtH / 2 - 1}
+            width={txtW + 4}
+            height={txtH + 2}
+            fill="rgba(255, 255, 255, 0.85)"
+            cornerRadius={2}
+            listening={false}
+          />
+          <Text
+            text={l}
+            fontSize={9}
+            fill={COLORS.darkGray}
+            fontFamily="monospace"
+            align="center"
+            verticalAlign="middle"
+            x={-txtW / 2}
+            y={-txtH / 2}
+            width={txtW}
+            height={txtH}
+            listening={false}
+          />
+        </Group>
       )
     }
     return { ticks, labels }
@@ -728,19 +744,37 @@ export default function GridCanvas() {
             {rulerContent.labels}
 
             {/* Total ruler length display */}
-            <Text
+            <Group
               x={effectiveLen / 2}
               y={SIZES.rulerHeight - 9}
-              text={`${(effectiveLen / 100).toFixed(1)} cm`}
-              fontSize={10}
-              fontStyle="bold"
-              fontFamily="monospace"
-              fill={COLORS.rulerTextGold}
-              align="center"
-              offsetX={40} // half of custom width 80
               rotation={-rulerRotation}
-              listening={false}
-            />
+            >
+              <Rect
+                x={-28}
+                y={-7}
+                width={56}
+                height={14}
+                fill="rgba(255, 255, 255, 0.9)"
+                stroke={COLORS.rulerLineGold}
+                strokeWidth={1}
+                cornerRadius={3}
+                listening={false}
+              />
+              <Text
+                x={-28}
+                y={-7}
+                width={56}
+                height={14}
+                text={`${(effectiveLen / 100).toFixed(1)} cm`}
+                fontSize={9}
+                fontStyle="bold"
+                fontFamily="monospace"
+                fill={COLORS.rulerTextGold}
+                align="center"
+                verticalAlign="middle"
+                listening={false}
+              />
+            </Group>
 
             {/* Central move handle */}
             <InteractiveHandle
@@ -774,17 +808,36 @@ export default function GridCanvas() {
             />
 
             {/* Rotation label */}
-            <Text
+            <Group
               x={effectiveLen / 2}
               y={-27}
-              text={`${rulerRotation}°`}
-              fontSize={10}
-              fontFamily="monospace"
-              fill={COLORS.rulerTextGold}
-              align="center"
-              offsetX={20}
               rotation={-rulerRotation}
-            />
+            >
+              <Rect
+                x={-22}
+                y={-7}
+                width={44}
+                height={14}
+                fill="rgba(255, 255, 255, 0.9)"
+                stroke={COLORS.rulerLineGold}
+                strokeWidth={1}
+                cornerRadius={3}
+                listening={false}
+              />
+              <Text
+                x={-22}
+                y={-7}
+                width={44}
+                height={14}
+                text={`${rulerRotation}°`}
+                fontSize={9}
+                fontFamily="monospace"
+                fill={COLORS.rulerTextGold}
+                align="center"
+                verticalAlign="middle"
+                listening={false}
+              />
+            </Group>
 
             {/* Right resize handle */}
             <InteractiveHandle
@@ -815,17 +868,33 @@ export default function GridCanvas() {
               listening={false}
             />
             {/* Radius measurement on left leg */}
-            <Text
-              x={-compassLegLength + 10}
+            <Group
+              x={-compassLegLength / 2}
               y={-14}
-              width={compassLegLength - 20}
-              text={`${(compassLegLength / 100).toFixed(1)} cm`}
-              fontSize={10}
-              fontFamily="monospace"
-              fill={COLORS.mediumGray}
-              align="center"
-              listening={false}
-            />
+            >
+              <Rect
+                x={-25}
+                y={-6}
+                width={50}
+                height={12}
+                fill="rgba(255, 255, 255, 0.85)"
+                cornerRadius={2}
+                listening={false}
+              />
+              <Text
+                x={-25}
+                y={-6}
+                width={50}
+                height={12}
+                text={`${(compassLegLength / 100).toFixed(1)} cm`}
+                fontSize={9}
+                fontFamily="monospace"
+                fill={COLORS.mediumGray}
+                align="center"
+                verticalAlign="middle"
+                listening={false}
+              />
+            </Group>
 
             {/* Right leg (rotatable drawing line) */}
             <Line
@@ -955,22 +1024,39 @@ export default function GridCanvas() {
                   const labelRadius = protractorRadius - 22
                   const lx = labelRadius * cos
                   const ly = labelRadius * sin
+                  const lText = `${i}`
+                  const txtW = lText.length * 6
+                  const txtH = 8
                   elements.push(
-                    <Text
-                      key={`plabel-${i}`}
+                    <Group
+                      key={`plabel-grp-${i}`}
                       x={lx}
                       y={ly}
-                      text={`${i}`}
-                      fontSize={8}
-                      fill="#111"
-                      fontFamily="monospace"
-                      align="center"
-                      verticalAlign="middle"
-                      offsetX={8} // Center the text box
-                      offsetY={4}
                       rotation={-protractorRotation}
-                      listening={false}
-                    />
+                    >
+                      <Rect
+                        x={-txtW / 2 - 2}
+                        y={-txtH / 2 - 1}
+                        width={txtW + 4}
+                        height={txtH + 2}
+                        fill="rgba(255, 255, 255, 0.85)"
+                        cornerRadius={2}
+                        listening={false}
+                      />
+                      <Text
+                        text={lText}
+                        fontSize={8}
+                        fill="#111"
+                        fontFamily="monospace"
+                        align="center"
+                        verticalAlign="middle"
+                        x={-txtW / 2}
+                        y={-txtH / 2}
+                        width={txtW}
+                        height={txtH}
+                        listening={false}
+                      />
+                    </Group>
                   )
                 }
               }
@@ -990,35 +1076,69 @@ export default function GridCanvas() {
                     strokeWidth={1.5}
                     dash={[4, 2]}
                   />
-                  <Text
+                  <Group
                     x={tx * 0.5}
                     y={ty * 0.5}
-                    text={`${protractorAngle}°`}
-                    fontSize={11}
-                    fontStyle="bold"
-                    fill={COLORS.protractorDarkGreen}
-                    fontFamily="monospace"
-                    backgroundColor="white"
-                    offsetX={12} // Center it
-                    offsetY={6}
                     rotation={-protractorRotation}
-                  />
+                  >
+                    <Rect
+                      x={-20}
+                      y={-8}
+                      width={40}
+                      height={16}
+                      fill="white"
+                      stroke={COLORS.protractorGreen}
+                      strokeWidth={1}
+                      cornerRadius={3}
+                      listening={false}
+                    />
+                    <Text
+                      x={-20}
+                      y={-8}
+                      width={40}
+                      height={16}
+                      text={`${protractorAngle}°`}
+                      fontSize={10}
+                      fontStyle="bold"
+                      fill={COLORS.protractorDarkGreen}
+                      fontFamily="monospace"
+                      align="center"
+                      verticalAlign="middle"
+                      listening={false}
+                    />
+                  </Group>
                 </Group>
               )
             })()}
 
             {/* Left Handle (Radius resizing) */}
-            <Text
-              x={-protractorRadius - 65}
+            <Group
+              x={-protractorRadius - 35}
               y={-5}
-              width={60}
-              text={`R: ${(protractorRadius / 100).toFixed(1)} cm`}
-              fontSize={9}
-              fontFamily="monospace"
-              fill={COLORS.mediumGray}
-              align="right"
-              listening={false}
-            />
+            >
+              <Rect
+                x={-30}
+                y={-6}
+                width={60}
+                height={12}
+                fill="rgba(255, 255, 255, 0.85)"
+                cornerRadius={2}
+                listening={false}
+              />
+              <Text
+                x={-30}
+                y={-6}
+                width={60}
+                height={12}
+                text={`R: ${(protractorRadius / 100).toFixed(1)} cm`}
+                fontSize={8}
+                fontFamily="monospace"
+                fill={COLORS.mediumGray}
+                align="center"
+                verticalAlign="middle"
+                listening={false}
+              />
+            </Group>
             <InteractiveHandle
               x={-protractorRadius}
               y={0}
