@@ -853,8 +853,6 @@ export default function GridCanvas() {
               cursorType="move"
               radius={SIZES.handleRadiusCenter}
               isActive={compassDrawingMode}
-              fill={compassDrawingMode ? COLORS.primaryBlue : COLORS.mediumGray}
-              stroke={COLORS.darkGray}
               onDblClick={() => {
                 useCanvasStore.getState().setCompassDrawingMode(!compassDrawingMode)
               }}
@@ -986,7 +984,7 @@ export default function GridCanvas() {
                 <Group>
                   <Line
                     points={[0, 0, tx, ty]}
-                    stroke="#3b82f6"
+                    stroke="#22c55e"
                     strokeWidth={1.5}
                     dash={[4, 2]}
                   />
@@ -996,7 +994,7 @@ export default function GridCanvas() {
                     text={`${protractorAngle}°`}
                     fontSize={11}
                     fontStyle="bold"
-                    fill="#1e3a8a"
+                    fill="#15803d"
                     fontFamily="monospace"
                     backgroundColor="white"
                   />
@@ -1035,8 +1033,6 @@ export default function GridCanvas() {
               y={0}
               cursorType="move"
               radius={SIZES.handleRadiusCenter}
-              fill={COLORS.mediumGray}
-              stroke={COLORS.darkGray}
               onMouseDown={(e) => {
                 setProtractorDragStart({
                   clientX: e.evt.clientX,
@@ -1075,7 +1071,8 @@ export default function GridCanvas() {
                   y={hy}
                   cursorType="pointer"
                   radius={SIZES.handleRadiusStandard}
-                  isActive={true}
+                  fill="#22c55e"
+                  stroke="#15803d"
                   onDblClick={() => {
                     const rotRad = degToRad(protractorRotation)
                     const px = protractorPos.x + hx * Math.cos(rotRad) - hy * Math.sin(rotRad)

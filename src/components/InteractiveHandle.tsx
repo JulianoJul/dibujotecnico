@@ -68,8 +68,22 @@ export default function InteractiveHandle({
     }
   }
 
-  const defaultFill = isActive ? COLORS.handleFillActive : COLORS.handleFillIdle
-  const defaultStroke = isActive ? COLORS.primaryBlue : COLORS.handleStrokeIdle
+  let defaultFill = COLORS.handleFillIdle
+  let defaultStroke = COLORS.handleStrokeIdle
+
+  if (isActive) {
+    defaultFill = COLORS.handleFillActive
+    defaultStroke = COLORS.primaryBlue
+  } else if (cursorType === 'move') {
+    defaultFill = COLORS.handleMoveFill
+    defaultStroke = COLORS.handleMoveStroke
+  } else if (cursorType === 'ew-resize') {
+    defaultFill = COLORS.handleResizeFill
+    defaultStroke = COLORS.handleResizeStroke
+  } else if (cursorType === 'pointer') {
+    defaultFill = COLORS.handleRotateFill
+    defaultStroke = COLORS.handleRotateStroke
+  }
 
   return (
     <Group

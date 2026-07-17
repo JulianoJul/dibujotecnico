@@ -12,6 +12,13 @@ export const COLORS = {
   handleFillActive: '#3b82f6',
   handleFillMove: '#555',
   
+  handleMoveFill: '#f97316',      // Orange
+  handleMoveStroke: '#c2410c',
+  handleResizeFill: '#3b82f6',    // Blue
+  handleResizeStroke: '#1d4ed8',
+  handleRotateFill: '#ef4444',    // Red
+  handleRotateStroke: '#b91c1c',
+  
   protractorGlass: 'rgba(255, 255, 255, 0.4)',
 }
 
