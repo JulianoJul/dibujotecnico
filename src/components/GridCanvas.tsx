@@ -63,6 +63,7 @@ export default function GridCanvas() {
   const canvasWidth = useCanvasStore((s) => s.canvasWidth)
   const canvasHeight = useCanvasStore((s) => s.canvasHeight)
   const gridSnapEnabled = useCanvasStore((s) => s.gridSnapEnabled)
+  const isExporting = useCanvasStore((s) => s.isExporting)
 
   const STAGE_W = canvasWidth + RULER
   const STAGE_H = canvasHeight + RULER
@@ -83,6 +84,13 @@ export default function GridCanvas() {
   const lastClick = useRef(0)
   const freehand = useRef(false)
   const rulerGroupRef = useRef<Konva.Group>(null)
+  const stageRef = useRef<any>(null)
+  
+  const setStageRef = useCanvasStore((s) => s.setStageRef)
+  useEffect(() => {
+    setStageRef(stageRef.current)
+    return () => setStageRef(null)
+  }, [setStageRef])
 
   const effectiveLen = resizeLen ?? rulerLength
 
@@ -597,6 +605,7 @@ export default function GridCanvas() {
 
   return (
     <Stage
+      ref={stageRef}
       width={STAGE_W}
       height={STAGE_H}
       onMouseDown={handleMouseDown}
@@ -606,22 +615,24 @@ export default function GridCanvas() {
       onMouseMove={handleMouseMove}
       onMouseLeave={() => setPreviewPos(null)}
     >
-      <Layer>
-        <Rect x={0} y={0} width={RULER} height={canvasHeight} fill="#f0f0f0" listening={false} />
-        <Rect x={RULER} y={canvasHeight} width={canvasWidth} height={RULER} fill="#f0f0f0" listening={false} />
-      </Layer>
+      {!isExporting && (
+        <Layer>
+          <Rect x={0} y={0} width={RULER} height={canvasHeight} fill="#f0f0f0" listening={false} />
+          <Rect x={RULER} y={canvasHeight} width={canvasWidth} height={RULER} fill="#f0f0f0" listening={false} />
+        </Layer>
+      )}
 
       <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
         <Rect x={RULER} y={0} width={canvasWidth} height={canvasHeight} fill="white" listening={false} />
-        {gridLines.minor.map((p, i) => (
+        {!isExporting && gridLines.minor.map((p, i) => (
           <Line key={`mi-${i}`} points={p} stroke="#e8e8e8" strokeWidth={0.5} listening={false} />
         ))}
-        {gridLines.major.map((p, i) => (
+        {!isExporting && gridLines.major.map((p, i) => (
           <Line key={`ma-${i}`} points={p} stroke="#b0b0b0" strokeWidth={1.5} listening={false} />
         ))}
       </Layer>
 
-      <Layer>{axisRulers}</Layer>
+      {!isExporting && <Layer>{axisRulers}</Layer>}
 
       <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
         {paths.map((path, i) => (
@@ -635,7 +646,7 @@ export default function GridCanvas() {
             listening={false}
           />
         ))}
-        {currentPoints.length >= 2 && (
+        {!isExporting && currentPoints.length >= 2 && (
           <Line
             points={currentPoints.reduce<number[]>((a, v, i) => (a.push(i % 2 === 0 ? v + RULER : v), a), [])}
             stroke="#2563eb"
@@ -645,13 +656,13 @@ export default function GridCanvas() {
             listening={false}
           />
         )}
-        {previewLine && (
+        {!isExporting && previewLine && (
           <Line points={previewLine} stroke="#2563eb" strokeWidth={1.5} dash={[6, 4]} listening={false} />
         )}
-        {(tool === 'polyline' || tool === 'freehand') && previewPos && !resizeStart && !dragStart && !rotationStart && (
+        {!isExporting && (tool === 'polyline' || tool === 'freehand') && previewPos && !resizeStart && !dragStart && !rotationStart && (
           <Circle x={previewPos.x + RULER} y={previewPos.y} radius={3} fill="#2563eb" opacity={0.6} listening={false} />
         )}
-        {tool === 'point' && previewPos && !resizeStart && !dragStart && !rotationStart && (
+        {!isExporting && tool === 'point' && previewPos && !resizeStart && !dragStart && !rotationStart && (
           <Group x={previewPos.x + RULER} y={previewPos.y} opacity={0.6} listening={false}>
             <Line points={[-SIZES.crossMarkSize, 0, SIZES.crossMarkSize, 0]} stroke="#2563eb" strokeWidth={1.5} />
             <Line points={[0, -SIZES.crossMarkSize, 0, SIZES.crossMarkSize]} stroke="#2563eb" strokeWidth={1.5} />
@@ -659,7 +670,7 @@ export default function GridCanvas() {
         )}
 
         {/* Magnetic intersection points visual indicator (Euclidea style) */}
-        {gridSnapEnabled && intersections.map((pt, i) => (
+        {!isExporting && gridSnapEnabled && intersections.map((pt, i) => (
           <Circle
             key={`int-${i}`}
             x={pt.x + RULER}
@@ -675,6 +686,7 @@ export default function GridCanvas() {
 
         {/* Tooltip measurements during drawing */}
         {(() => {
+          if (isExporting) return null
           if (freehand.current && currentPoints.length >= 2) {
             const x = currentPoints[currentPoints.length - 2] + RULER
             const y = currentPoints[currentPoints.length - 1]
@@ -709,7 +721,7 @@ export default function GridCanvas() {
         })()}
       </Layer>
 
-      {rulerVisible && (
+      {rulerVisible && !isExporting && (
         <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             ref={rulerGroupRef}
@@ -807,7 +819,7 @@ export default function GridCanvas() {
           </Group>
         </Layer>
       )}
-      {compassVisible && (
+      {compassVisible && !isExporting && (
         <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             x={compassPos.x}
@@ -911,7 +923,7 @@ export default function GridCanvas() {
           </Group>
         </Layer>
       )}
-      {protractorVisible && (
+      {protractorVisible && !isExporting && (
         <Layer clip={{ x: RULER, y: 0, width: canvasWidth, height: canvasHeight }}>
           <Group
             x={protractorPos.x}

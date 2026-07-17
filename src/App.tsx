@@ -22,6 +22,8 @@ function App() {
   const setCanvasSize = useCanvasStore((s) => s.setCanvasSize)
   const gridSnapEnabled = useCanvasStore((s) => s.gridSnapEnabled)
   const toggleGridSnap = useCanvasStore((s) => s.toggleGridSnap)
+  const stageRef = useCanvasStore((s) => s.stageRef)
+  const setIsExporting = useCanvasStore((s) => s.setIsExporting)
 
   const [wCm, setWCm] = useState(String(canvasWidth / 100))
   const [hCm, setHCm] = useState(String(canvasHeight / 100))
@@ -35,6 +37,32 @@ function App() {
     } else {
       alert("Por favor ingresa valores válidos (Ancho: 4-30 cm, Alto: 3-20 cm)")
     }
+  }
+
+  const handleExportPNG = () => {
+    if (!stageRef) return
+    setIsExporting(true)
+    setTimeout(() => {
+      try {
+        const dataUrl = stageRef.toDataURL({
+          x: 30, // Left ruler border offset
+          y: 0,
+          width: canvasWidth,
+          height: canvasHeight,
+          pixelRatio: 2 // High resolution export
+        })
+        const link = document.createElement('a')
+        link.download = 'dibujo.png'
+        link.href = dataUrl
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      } catch (err) {
+        console.error('Error al exportar a PNG:', err)
+      } finally {
+        setIsExporting(false)
+      }
+    }, 100)
   }
 
   return (
@@ -104,6 +132,15 @@ function App() {
           variant="danger"
         >
           Limpiar
+        </ToolbarButton>
+
+        <span className="text-gray-300 text-sm">|</span>
+
+        <ToolbarButton
+          onClick={handleExportPNG}
+          title="Guardar dibujo limpio como archivo PNG"
+        >
+          Guardar PNG
         </ToolbarButton>
 
         <span className="text-gray-300 text-sm">|</span>

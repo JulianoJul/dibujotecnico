@@ -54,6 +54,10 @@ interface CanvasState {
   setCanvasSize: (w: number, h: number) => void
   gridSnapEnabled: boolean
   toggleGridSnap: () => void
+  stageRef: any | null
+  setStageRef: (ref: any | null) => void
+  isExporting: boolean
+  setIsExporting: (exporting: boolean) => void
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
@@ -120,4 +124,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   setCanvasSize: (canvasWidth, canvasHeight) => set({ canvasWidth, canvasHeight }),
   gridSnapEnabled: true,
   toggleGridSnap: () => set((s) => ({ gridSnapEnabled: !s.gridSnapEnabled })),
+  stageRef: null,
+  setStageRef: (stageRef) => set({ stageRef }),
+  isExporting: false,
+  setIsExporting: (isExporting) => set({ isExporting }),
 }))
