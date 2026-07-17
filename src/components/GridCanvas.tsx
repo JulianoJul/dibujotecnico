@@ -284,10 +284,8 @@ export default function GridCanvas() {
     const ticks: React.ReactNode[] = []
     const labels: React.ReactNode[] = []
     
-    // During active rotation, keep text aligned with ruler (local rotation = 0)
-    // On release, make text perfectly horizontal (local rotation = -rulerRotation)
-    const isRotating = rotationStart !== null
-    const textRotation = isRotating ? 0 : -rulerRotation
+    // Keep text perfectly horizontal (upright) relative to the screen at all times
+    const textRotation = -rulerRotation
 
     for (let x = 0; x <= effectiveLen; x += GRID) {
       const cm = x % 100 === 0
@@ -783,8 +781,7 @@ export default function GridCanvas() {
               fill="#8a720c"
               align="center"
               offsetX={40} // half of custom width 80
-              offsetY={5}
-              rotation={rotationStart !== null ? 0 : -rulerRotation}
+              rotation={-rulerRotation}
               listening={false}
             />
 
@@ -839,8 +836,7 @@ export default function GridCanvas() {
               fill="#8a720c"
               align="center"
               offsetX={20}
-              offsetY={5}
-              rotation={rotationStart !== null ? 0 : -rulerRotation}
+              rotation={-rulerRotation}
             />
 
             {/* Right resize handle */}
