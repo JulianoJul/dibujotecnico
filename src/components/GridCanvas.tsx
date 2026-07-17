@@ -492,6 +492,16 @@ export default function GridCanvas() {
         let newRotation = (rotationStart.startRotation + deltaAngleDeg) % 360
         if (newRotation < 0) newRotation += 360
 
+        // Snap to cardinal angles (0, 90, 180, 270) when within 1.5 degrees
+        const snapThreshold = 1.5
+        const cardinalAngles = [0, 90, 180, 270, 360]
+        for (const target of cardinalAngles) {
+          if (Math.abs(newRotation - target) < snapThreshold) {
+            newRotation = target % 360
+            break
+          }
+        }
+
         newRotation = Math.round(newRotation * 10) / 10
         if (isRulerInsideCanvas(rulerPos.x, rulerPos.y, effectiveLen, newRotation, canvasWidth, canvasHeight)) {
           setRulerRotation(newRotation)
