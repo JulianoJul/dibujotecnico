@@ -49,6 +49,7 @@ export default function InteractiveHandle({
   }
 
   const handleMouseLeave = (e: KonvaEventObject<MouseEvent>) => {
+    if (e.evt && e.evt.buttons === 1) return // Keep cursor during drag
     const stage = e.target.getStage()
     if (stage) stage.container().style.cursor = 'default'
   }

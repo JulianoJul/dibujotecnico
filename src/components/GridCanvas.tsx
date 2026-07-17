@@ -441,6 +441,11 @@ export default function GridCanvas() {
         }
         st.clearCurrent()
       }
+
+      // Revert cursor to default
+      if (stageRef.current) {
+        stageRef.current.container().style.cursor = 'default'
+      }
     }
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
